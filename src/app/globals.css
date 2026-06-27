@@ -1,6 +1,11 @@
 @import "tailwindcss";
 
 @theme inline {
+  /* Font families */
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-patrick-hand-sc);
+  --font-ui: var(--font-poppins);
+
   /* OKLCH Design Tokens — Light Mode Default (zinc) */
   --color-background: oklch(1 0 0);
   --color-foreground: oklch(0.145 0 0);
