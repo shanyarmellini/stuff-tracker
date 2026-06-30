@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createClient } from "~/lib/supabase/client";
 import { cn } from "~/lib/utils";
 
 const categories = [
@@ -180,6 +181,14 @@ function ExternalLinkIcon() {
 export default function DashboardPage() {
   const [activeCategory, setActiveCategory] = useState("all");
   const [search, setSearch] = useState("");
+  const [email, setEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      setEmail(data.user?.email ?? null);
+    });
+  }, []);
 
   const filteredItems = items
     .filter(
@@ -245,7 +254,7 @@ export default function DashboardPage() {
             <h1 className="font-display text-4xl tracking-wide text-slate-800">
               My Items
             </h1>
-            <p className="font-ui text-sm text-slate-400">example@gmail.com</p>
+            {email && <p className="font-ui text-sm text-slate-400">{email}</p>}
           </div>
 
           {/* Search bar */}
