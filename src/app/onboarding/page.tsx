@@ -21,11 +21,22 @@ const GENDERS = ["Woman", "Man", "Non-binary", "Prefer not to say"];
 
 export default function OnboardingPage() {
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
+  const [otherActive, setOtherActive] = useState(false);
+  const [otherText, setOtherText] = useState("");
 
   function toggleType(type: string) {
     setSelectedTypes((prev) =>
       prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type],
     );
+  }
+
+  function toggleOther() {
+    if (otherActive) {
+      setOtherActive(false);
+      setOtherText("");
+    } else {
+      setOtherActive(true);
+    }
   }
 
   return (
@@ -43,6 +54,9 @@ export default function OnboardingPage() {
           {selectedTypes.map((type) => (
             <input key={type} type="hidden" name="item_types" value={type} />
           ))}
+          {otherActive && otherText.trim() && (
+            <input type="hidden" name="item_types" value={otherText.trim()} />
+          )}
 
           {/* Item types */}
           <div>
@@ -71,7 +85,28 @@ export default function OnboardingPage() {
                   </button>
                 );
               })}
+              <button
+                type="button"
+                onClick={toggleOther}
+                className={cn(
+                  "rounded-full border px-4 py-1.5 font-ui text-sm transition-colors",
+                  otherActive
+                    ? "border-sky-400 bg-sky-400 text-white"
+                    : "border-sky-200 bg-white text-slate-500 hover:border-sky-300 hover:text-sky-600",
+                )}
+              >
+                Other
+              </button>
             </div>
+            {otherActive && (
+              <input
+                type="text"
+                placeholder="e.g. Vintage clothing"
+                value={otherText}
+                onChange={(e) => setOtherText(e.target.value)}
+                className="mt-2 w-full rounded-xl border border-sky-100 bg-white px-4 py-2.5 font-ui text-sm text-slate-700 shadow-sm outline-none placeholder:text-slate-300 focus:border-sky-300 focus:ring-2 focus:ring-sky-100 transition-all"
+              />
+            )}
           </div>
 
           {/* Gender */}

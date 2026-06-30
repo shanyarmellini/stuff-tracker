@@ -14,15 +14,6 @@ type Item = {
   created_at: string;
 };
 
-const categories = [
-  { id: "all", label: "All" },
-  { id: "skincare", label: "Skincare" },
-  { id: "makeup", label: "Makeup" },
-  { id: "hair", label: "Hair" },
-  { id: "fragrance", label: "Fragrance" },
-  { id: "tools", label: "Tools" },
-  { id: "misc", label: "Misc" },
-];
 
 function SettingsIcon() {
   return (
@@ -141,11 +132,31 @@ export default function DashboardPage() {
   const [search, setSearch] = useState("");
   const [items, setItems] = useState<Item[]>([]);
   const [email, setEmail] = useState<string | null>(null);
+  const [categories, setCategories] = useState<{ id: string; label: string }[]>([
+    { id: "all", label: "All" },
+  ]);
 
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data }) => {
-      setEmail(data.user?.email ?? null);
+      const user = data.user;
+      if (!user) return;
+      setEmail(user.email ?? null);
+
+      supabase
+        .from("profiles")
+        .select("item_types")
+        .eq("user_id", user.id)
+        .single()
+        .then(({ data: profile }) => {
+          const types: string[] = profile?.item_types ?? [];
+          if (types.length > 0) {
+            setCategories([
+              { id: "all", label: "All" },
+              ...types.map((t) => ({ id: t.toLowerCase(), label: t })),
+            ]);
+          }
+        });
     });
     supabase
       .from("items")
