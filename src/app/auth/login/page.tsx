@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { login } from "~/app/auth/actions";
+import { GoogleSignInButton } from "~/components/google-sign-in-button";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
@@ -53,6 +54,17 @@ export default async function LoginPage({
             Sign in
           </Button>
         </form>
+
+        <div className="relative">
+          <div className="absolute inset-0 flex items-center">
+            <span className="w-full border-t border-border" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-background px-2 text-muted-foreground">or</span>
+          </div>
+        </div>
+
+        <GoogleSignInButton />
 
         <p className="text-center text-sm text-muted-foreground">
           Don&apos;t have an account?{" "}
