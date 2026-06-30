@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Patrick_Hand_SC, Poppins } from "next/font/google";
 import { Navbar } from "~/components/navbar";
+import { createClient } from "~/lib/supabase/server";
 import { ThemeProvider } from "./theme-provider";
 import "./globals.css";
 
@@ -24,18 +25,23 @@ export const metadata: Metadata = {
     "Track ALL your purchases and sit back and watch as AI organizes them in seconds!",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   return (
     <html lang="en" suppressHydrationWarning>
       <body
         className={`${inter.variable} ${patrickHandSC.variable} ${poppins.variable} font-sans`}
       >
         <ThemeProvider>
-          <Navbar />
+          <Navbar user={user} />
           {children}
         </ThemeProvider>
       </body>
