@@ -36,6 +36,19 @@ export function Navbar({ user }: { user: User | null }) {
               {link.label}
             </Link>
           ))}
+          {user?.app_metadata?.role === "admin" && (
+            <Link
+              href="/admin"
+              className={cn(
+                "text-sm transition-colors hover:text-foreground",
+                pathname === "/admin"
+                  ? "text-foreground"
+                  : "text-muted-foreground",
+              )}
+            >
+              Admin
+            </Link>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {user ? (

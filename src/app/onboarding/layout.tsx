@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "~/lib/supabase/server";
 
-export default async function DashboardLayout({
+export default async function OnboardingLayout({
   children,
 }: {
   children: React.ReactNode;
@@ -21,8 +21,8 @@ export default async function DashboardLayout({
     .eq("user_id", user.id)
     .single();
 
-  if (!profile?.onboarding_complete) {
-    redirect("/onboarding");
+  if (profile?.onboarding_complete) {
+    redirect("/dashboard");
   }
 
   return <>{children}</>;
