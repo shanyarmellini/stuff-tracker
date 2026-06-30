@@ -46,12 +46,12 @@ export default function OnboardingPage() {
 
           {/* Item types */}
           <div>
-            <label className="mb-3 block font-ui text-sm font-medium text-slate-700">
+            <p className="mb-3 font-ui text-sm font-medium text-slate-700">
               What kind of items do you usually buy?
               <span className="ml-1 font-normal text-slate-400">
                 (pick all that apply)
               </span>
-            </label>
+            </p>
             <div className="flex flex-wrap gap-2">
               {ITEM_TYPES.map((type) => {
                 const active = selectedTypes.includes(type);
