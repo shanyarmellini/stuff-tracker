@@ -59,10 +59,24 @@ export function Navbar({ user }: { user: User | null }) {
             </form>
           ) : (
             <>
-              <Button asChild variant="ghost" size="sm">
+              <Button
+                asChild
+                variant={pathname === "/auth/login" ? "default" : "ghost"}
+                size="sm"
+                className={
+                  pathname !== "/auth/login" ? "border border-border" : ""
+                }
+              >
                 <Link href="/auth/login">Sign in</Link>
               </Button>
-              <Button asChild size="sm">
+              <Button
+                asChild
+                variant={pathname === "/auth/signup" ? "default" : "ghost"}
+                size="sm"
+                className={
+                  pathname !== "/auth/signup" ? "border border-border" : ""
+                }
+              >
                 <Link href="/auth/signup">Sign up</Link>
               </Button>
             </>

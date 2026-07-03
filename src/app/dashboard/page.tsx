@@ -14,7 +14,6 @@ type Item = {
   created_at: string;
 };
 
-
 function SettingsIcon() {
   return (
     <svg
@@ -132,9 +131,9 @@ export default function DashboardPage() {
   const [search, setSearch] = useState("");
   const [items, setItems] = useState<Item[]>([]);
   const [email, setEmail] = useState<string | null>(null);
-  const [categories, setCategories] = useState<{ id: string; label: string }[]>([
-    { id: "all", label: "All" },
-  ]);
+  const [categories, setCategories] = useState<{ id: string; label: string }[]>(
+    [{ id: "all", label: "All" }],
+  );
 
   useEffect(() => {
     const supabase = createClient();

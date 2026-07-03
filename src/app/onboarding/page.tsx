@@ -4,6 +4,12 @@ import { useState } from "react";
 import { cn } from "~/lib/utils";
 import { saveOnboarding } from "./actions";
 
+type ValidationError = {
+  itemTypes?: string;
+  gender?: string;
+  age?: string;
+};
+
 const ITEM_TYPES = [
   "Skincare",
   "Makeup",
@@ -23,6 +29,8 @@ export default function OnboardingPage() {
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
   const [otherActive, setOtherActive] = useState(false);
   const [otherText, setOtherText] = useState("");
+  const [otherItems, setOtherItems] = useState<string[]>([]);
+  const [errors, setErrors] = useState<ValidationError>({});
 
   function toggleType(type: string) {
     setSelectedTypes((prev) =>
@@ -34,9 +42,59 @@ export default function OnboardingPage() {
     if (otherActive) {
       setOtherActive(false);
       setOtherText("");
+      setOtherItems([]);
     } else {
       setOtherActive(true);
     }
+  }
+
+  function commitOtherItem() {
+    const trimmed = otherText.trim();
+    if (trimmed && !otherItems.includes(trimmed)) {
+      setOtherItems((prev) => [...prev, trimmed]);
+    }
+    setOtherText("");
+  }
+
+  function removeOtherItem(item: string) {
+    setOtherItems((prev) => prev.filter((i) => i !== item));
+  }
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+
+    // Auto-commit any pending other text
+    const pendingOther = otherText.trim();
+    let finalOtherItems = otherItems;
+    if (pendingOther && !otherItems.includes(pendingOther)) {
+      finalOtherItems = [...otherItems, pendingOther];
+      setOtherItems(finalOtherItems);
+      setOtherText("");
+    }
+
+    const allItemTypes = selectedTypes.length + finalOtherItems.length;
+    const gender = formData.get("gender") as string | null;
+    const age = formData.get("age") as string | null;
+
+    const newErrors: ValidationError = {};
+    if (allItemTypes === 0)
+      newErrors.itemTypes = "Please select at least one item type.";
+    if (!gender) newErrors.gender = "Please select how you identify.";
+    if (!age || Number(age) < 13)
+      newErrors.age = "Please enter a valid age (13+).";
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+
+    setErrors({});
+    // Append auto-committed other items to formData before submitting
+    for (const item of finalOtherItems) {
+      formData.append("item_types", item);
+    }
+    await saveOnboarding(formData);
   }
 
   return (
@@ -49,14 +107,11 @@ export default function OnboardingPage() {
           Tell us a bit about yourself so we can tailor your experience.
         </p>
 
-        <form action={saveOnboarding} className="flex flex-col gap-8">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-8">
           {/* Hidden inputs for selected item types */}
           {selectedTypes.map((type) => (
             <input key={type} type="hidden" name="item_types" value={type} />
           ))}
-          {otherActive && otherText.trim() && (
-            <input type="hidden" name="item_types" value={otherText.trim()} />
-          )}
 
           {/* Item types */}
           <div>
@@ -98,14 +153,56 @@ export default function OnboardingPage() {
                 Other
               </button>
             </div>
+            {errors.itemTypes && (
+              <p className="mt-2 font-ui text-xs text-red-500">
+                {errors.itemTypes}
+              </p>
+            )}
             {otherActive && (
-              <input
-                type="text"
-                placeholder="e.g. Vintage clothing"
-                value={otherText}
-                onChange={(e) => setOtherText(e.target.value)}
-                className="mt-2 w-full rounded-xl border border-sky-100 bg-white px-4 py-2.5 font-ui text-sm text-slate-700 shadow-sm outline-none placeholder:text-slate-300 focus:border-sky-300 focus:ring-2 focus:ring-sky-100 transition-all"
-              />
+              <div className="mt-2">
+                {otherItems.length > 0 && (
+                  <div className="mb-2 flex flex-wrap gap-2">
+                    {otherItems.map((item) => (
+                      <span
+                        key={item}
+                        className="flex items-center gap-1.5 rounded-full border border-sky-400 bg-sky-400 px-3 py-1 font-ui text-sm text-white"
+                      >
+                        {item}
+                        <button
+                          type="button"
+                          onClick={() => removeOtherItem(item)}
+                          className="leading-none opacity-70 hover:opacity-100"
+                          aria-label={`Remove ${item}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="e.g. Vintage clothing"
+                    value={otherText}
+                    onChange={(e) => setOtherText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        commitOtherItem();
+                      }
+                    }}
+                    className="flex-1 rounded-xl border border-sky-100 bg-white px-4 py-2.5 font-ui text-sm text-slate-700 shadow-sm outline-none placeholder:text-slate-300 focus:border-sky-300 focus:ring-2 focus:ring-sky-100 transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={commitOtherItem}
+                    className="rounded-xl border border-sky-200 bg-white px-4 py-2.5 font-ui text-sm text-slate-500 transition-colors hover:border-sky-300 hover:text-sky-600"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
             )}
           </div>
 
@@ -137,6 +234,11 @@ export default function OnboardingPage() {
                 </label>
               ))}
             </div>
+            {errors.gender && (
+              <p className="mt-2 font-ui text-xs text-red-500">
+                {errors.gender}
+              </p>
+            )}
           </div>
 
           {/* Age */}
@@ -156,6 +258,9 @@ export default function OnboardingPage() {
               placeholder="e.g. 27"
               className="w-32 rounded-xl border border-sky-100 bg-white px-4 py-2.5 font-ui text-sm text-slate-700 shadow-sm outline-none placeholder:text-slate-300 focus:border-sky-300 focus:ring-2 focus:ring-sky-100 transition-all"
             />
+            {errors.age && (
+              <p className="mt-2 font-ui text-xs text-red-500">{errors.age}</p>
+            )}
           </div>
 
           <button
