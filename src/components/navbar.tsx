@@ -7,10 +7,7 @@ import { signout } from "~/app/auth/actions";
 import { Button } from "~/components/ui/button";
 import { cn } from "~/lib/utils";
 
-const links = [
-  { href: "/", label: "Landing Page" },
-  { href: "/dashboard", label: "Home" },
-];
+const links = [{ href: "/dashboard", label: "Home" }];
 
 export function Navbar({ user }: { user: User | null }) {
   const pathname = usePathname();

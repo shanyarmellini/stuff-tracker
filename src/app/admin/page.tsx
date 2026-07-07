@@ -1,5 +1,7 @@
 import { createAdminClient } from "~/lib/supabase/admin";
 
+export const dynamic = "force-dynamic";
+
 type Item = {
   id: string;
   user_id: string;
