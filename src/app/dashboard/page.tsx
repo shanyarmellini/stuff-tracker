@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { GmailMessage } from "~/lib/google/gmail";
 import { createClient } from "~/lib/supabase/client";
 import { cn } from "~/lib/utils";
 
@@ -447,6 +448,12 @@ export default function DashboardPage() {
     [{ id: "all", label: "All" }],
   );
   const [renameCatLength, setRenameCatLength] = useState(0);
+  const [gmailPanelOpen, setGmailPanelOpen] = useState(false);
+  const [gmailEmail, setGmailEmail] = useState<string | null>(null);
+  const [gmailMessages, setGmailMessages] = useState<GmailMessage[]>([]);
+  const [gmailLoading, setGmailLoading] = useState(true);
+  const [gmailDisconnecting, setGmailDisconnecting] = useState(false);
+  const [gmailError, setGmailError] = useState<string | null>(null);
 
   useEffect(() => {
     if (addCatCreating) addCatNewLabelInputRef.current?.focus();
@@ -505,6 +512,53 @@ export default function DashboardPage() {
       });
     });
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const error = params.get("gmail_error");
+    if (error) {
+      setGmailError(error);
+      setGmailPanelOpen(true);
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!userId) return;
+    setGmailLoading(true);
+    fetch("/api/google/emails")
+      .then((res) => res.json())
+      .then(
+        (data: {
+          connected: boolean;
+          email?: string;
+          messages?: GmailMessage[];
+        }) => {
+          setGmailEmail(data.connected ? (data.email ?? null) : null);
+          setGmailMessages(data.connected ? (data.messages ?? []) : []);
+        },
+      )
+      .catch(() => {
+        setGmailEmail(null);
+        setGmailMessages([]);
+      })
+      .finally(() => {
+        setGmailLoading(false);
+      });
+  }, [userId]);
+
+  const handleDisconnectGmail = async () => {
+    setGmailDisconnecting(true);
+    try {
+      const res = await fetch("/api/google/disconnect", { method: "POST" });
+      if (res.ok) {
+        setGmailEmail(null);
+        setGmailMessages([]);
+      }
+    } finally {
+      setGmailDisconnecting(false);
+    }
+  };
 
   const viewItemId = viewItem?.id ?? null;
 
@@ -1130,12 +1184,89 @@ export default function DashboardPage() {
             >
               Account
             </button>
-            <button
-              type="button"
-              className="rounded-lg border border-sky-200 bg-white px-4 py-1.5 text-xs text-slate-500 font-ui transition-colors hover:bg-sky-50 hover:text-sky-600"
-            >
-              Email
-            </button>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setGmailPanelOpen((o) => !o)}
+                className="rounded-lg border border-sky-200 bg-white px-4 py-1.5 text-xs text-slate-500 font-ui transition-colors hover:bg-sky-50 hover:text-sky-600"
+              >
+                Email
+              </button>
+              {gmailPanelOpen && (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Close Gmail panel"
+                    className="fixed inset-0 z-[9] cursor-default"
+                    onClick={() => setGmailPanelOpen(false)}
+                  />
+                  <div className="absolute right-0 top-full z-20 mt-2 w-80 rounded-xl border border-sky-200 bg-white p-4 shadow-lg">
+                    {gmailError && (
+                      <p className="mb-3 font-ui text-xs text-red-500">
+                        {gmailError}
+                      </p>
+                    )}
+                    {gmailLoading ? (
+                      <p className="font-ui text-sm text-slate-400">Loading…</p>
+                    ) : !gmailEmail ? (
+                      <div className="flex flex-col items-start gap-2">
+                        <p className="font-ui text-sm text-slate-500">
+                          Connect your Gmail to see recent emails here.
+                        </p>
+                        <a
+                          href="/api/google/connect"
+                          className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 font-ui text-sm text-sky-600 transition-colors hover:bg-sky-100"
+                        >
+                          Connect Gmail
+                        </a>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="truncate font-ui text-xs text-slate-400">
+                            {gmailEmail}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={handleDisconnectGmail}
+                            disabled={gmailDisconnecting}
+                            className="shrink-0 font-ui text-xs text-red-500 transition-colors hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {gmailDisconnecting
+                              ? "Disconnecting…"
+                              : "Disconnect"}
+                          </button>
+                        </div>
+                        {gmailMessages.length === 0 ? (
+                          <p className="font-ui text-sm text-slate-400">
+                            No recent emails.
+                          </p>
+                        ) : (
+                          <ul className="flex max-h-72 flex-col gap-2 overflow-y-auto">
+                            {gmailMessages.map((message) => (
+                              <li
+                                key={message.id}
+                                className="rounded-lg border border-sky-50 p-2"
+                              >
+                                <p className="truncate font-ui text-xs font-semibold text-slate-700">
+                                  {message.subject || "(no subject)"}
+                                </p>
+                                <p className="truncate font-ui text-xs text-slate-400">
+                                  {message.from}
+                                </p>
+                                <p className="line-clamp-2 font-ui text-xs text-slate-400">
+                                  {message.snippet}
+                                </p>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
             <button
               type="button"
               className="flex items-center gap-1.5 rounded-lg border border-sky-200 bg-white px-4 py-1.5 text-xs text-slate-500 font-ui transition-colors hover:bg-sky-50 hover:text-sky-600"
@@ -1395,7 +1526,7 @@ export default function DashboardPage() {
                           </div>
 
                           <div>
-                            <p className="font-ui text-base font-semibold text-slate-700">
+                            <p className="truncate font-ui text-base font-semibold text-slate-700">
                               ${item.price.toFixed(2)}
                             </p>
                             {hostname && item.link && (
