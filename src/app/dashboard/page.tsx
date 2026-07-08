@@ -518,6 +518,8 @@ export default function DashboardPage() {
   const [emailPasteLoading, setEmailPasteLoading] = useState(false);
   const [emailPasteError, setEmailPasteError] = useState<string | null>(null);
   const [emailPasteResult, setEmailPasteResult] = useState<string | null>(null);
+  const [emailPasteAddedIds, setEmailPasteAddedIds] = useState<string[]>([]);
+  const [emailPasteUndoing, setEmailPasteUndoing] = useState(false);
   const [viewItem, setViewItem] = useState<ViewItem | null>(null);
   const [photoMenuOpen, setPhotoMenuOpen] = useState(false);
   const [photoUrlInputOpen, setPhotoUrlInputOpen] = useState(false);
@@ -1081,6 +1083,7 @@ export default function DashboardPage() {
     setEmailPasteLoading(false);
     setEmailPasteError(null);
     setEmailPasteResult(null);
+    setEmailPasteAddedIds([]);
   };
 
   const handleEmailPasteSubmit = async () => {
@@ -1089,13 +1092,15 @@ export default function DashboardPage() {
     setEmailPasteLoading(true);
     setEmailPasteError(null);
     setEmailPasteResult(null);
+    setEmailPasteAddedIds([]);
     try {
       const res = await fetch("/api/manual-emails/extract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
       });
-      const data: { added?: number; error?: string } = await res.json();
+      const data: { added?: number; itemIds?: string[]; error?: string } =
+        await res.json();
       if (!res.ok) {
         setEmailPasteError(data.error ?? "Something went wrong.");
         return;
@@ -1109,6 +1114,7 @@ export default function DashboardPage() {
         setEmailPasteResult(
           `Added ${added} item${added === 1 ? "" : "s"} to your collection.`,
         );
+        setEmailPasteAddedIds(data.itemIds ?? []);
         setEmailPasteText("");
         await refreshItemsAndCategories();
       }
@@ -1117,6 +1123,25 @@ export default function DashboardPage() {
     } finally {
       setEmailPasteLoading(false);
     }
+  };
+
+  const handleUndoEmailPaste = async () => {
+    if (emailPasteAddedIds.length === 0) return;
+    setEmailPasteUndoing(true);
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("items")
+      .delete()
+      .in("id", emailPasteAddedIds);
+    setEmailPasteUndoing(false);
+    if (error) {
+      console.error("Failed to undo added items:", error.message);
+      setEmailPasteError("Couldn't undo — please try again.");
+      return;
+    }
+    setEmailPasteAddedIds([]);
+    setEmailPasteResult("Removed those items from your collection.");
+    await refreshItemsAndCategories();
   };
 
   const handleAddPhotoFile = async (file: File | undefined) => {
@@ -2210,7 +2235,21 @@ export default function DashboardPage() {
               <p className="font-ui text-sm text-red-500">{emailPasteError}</p>
             )}
             {emailPasteResult && (
-              <p className="font-ui text-sm text-sky-600">{emailPasteResult}</p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="font-ui text-sm text-sky-600">
+                  {emailPasteResult}
+                </p>
+                {emailPasteAddedIds.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleUndoEmailPaste}
+                    disabled={emailPasteUndoing}
+                    className="shrink-0 font-ui text-sm font-medium text-red-500 underline decoration-dotted underline-offset-2 transition-colors hover:text-red-600 disabled:opacity-50"
+                  >
+                    {emailPasteUndoing ? "Undoing…" : "Undo"}
+                  </button>
+                )}
+              </div>
             )}
             <div className="flex gap-2">
               <button

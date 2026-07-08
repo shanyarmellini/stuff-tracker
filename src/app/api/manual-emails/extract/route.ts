@@ -132,5 +132,8 @@ export async function POST(request: Request) {
       .eq("user_id", user.id);
   }
 
-  return NextResponse.json({ added: inserted?.length ?? 0 });
+  return NextResponse.json({
+    added: inserted?.length ?? 0,
+    itemIds: inserted?.map((row) => row.id) ?? [],
+  });
 }
