@@ -402,27 +402,6 @@ export default function OnboardingPage() {
             )}
           </div>
 
-          {/* Email scanning consent */}
-          <div className="rounded-xl border border-sky-100 bg-sky-50/50 p-4">
-            <label className="flex cursor-pointer items-start gap-3">
-              <input
-                type="checkbox"
-                name="email_scan_consent"
-                className="mt-0.5 h-4 w-4 shrink-0 rounded border-sky-300 text-sky-500 focus:ring-sky-300"
-              />
-              <span className="font-ui text-sm text-slate-600">
-                Let Stuff Tracker&apos;s AI scan my connected Gmail for purchase
-                confirmations, so items I buy are added to my collection
-                automatically.
-                <span className="mt-1 block font-ui text-xs text-slate-400">
-                  Optional - you can connect Gmail and change this anytime from
-                  the dashboard. Only order/receipt emails are read, and nothing
-                  is shared outside your account.
-                </span>
-              </span>
-            </label>
-          </div>
-
           <button
             type="submit"
             className="mt-2 w-full rounded-xl bg-sky-500 py-3 font-ui text-sm font-medium text-white shadow-sm transition-colors hover:bg-sky-600"
