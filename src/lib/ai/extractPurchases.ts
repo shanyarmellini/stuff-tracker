@@ -106,8 +106,9 @@ export async function extractPurchasesFromEmails(
 
   const output = toolUse.input as ToolOutput;
   const imageByEmailId = new Map(emails.map((e) => [e.id, e.imageUrl]));
+  const items = Array.isArray(output.items) ? output.items : [];
 
-  return (output.items ?? [])
+  return items
     .filter(
       (item) =>
         item.name && item.price > 0 && imageByEmailId.has(item.email_id),
