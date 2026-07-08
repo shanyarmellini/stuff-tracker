@@ -1,7 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { extractPurchasesFromEmails } from "~/lib/ai/extractPurchases";
+import { extractFirstImageUrl, stripHtml } from "~/lib/email/html";
 import { createClient } from "~/lib/supabase/server";
+
+const LOOKS_LIKE_HTML = /<[a-z][\s\S]*>/i;
 
 const LINK_FORMAT = /^(https?:\/\/)?([^./\s]+\.)+[^./\s]{2,}(\/\S*)?$/i;
 
@@ -35,6 +38,10 @@ export async function POST(request: Request) {
     .eq("user_id", user.id)
     .single();
 
+  const isHtml = LOOKS_LIKE_HTML.test(trimmed);
+  const bodyText = isHtml ? stripHtml(trimmed) : trimmed;
+  const imageUrl = isHtml ? extractFirstImageUrl(trimmed) : null;
+
   let extracted: Awaited<ReturnType<typeof extractPurchasesFromEmails>>;
   try {
     extracted = await extractPurchasesFromEmails([
@@ -42,8 +49,8 @@ export async function POST(request: Request) {
         id: crypto.randomUUID(),
         from: "",
         subject: "",
-        bodyText: trimmed.slice(0, 12000),
-        imageUrl: null,
+        bodyText: bodyText.slice(0, 12000),
+        imageUrl,
       },
     ]);
   } catch (err) {

@@ -471,6 +471,22 @@ function isValidLink(value: string): boolean {
   }
 }
 
+function loadsAsImage(url: string, timeoutMs = 8000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const img = new window.Image();
+    let settled = false;
+    const finish = (result: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    img.onload = () => finish(true);
+    img.onerror = () => finish(false);
+    setTimeout(() => finish(false), timeoutMs);
+    img.src = url;
+  });
+}
+
 function linkHostname(url: string | null): string | null {
   if (!url) return null;
   try {
@@ -507,6 +523,7 @@ export default function DashboardPage() {
   const [photoUrlInputOpen, setPhotoUrlInputOpen] = useState(false);
   const [photoUrlValue, setPhotoUrlValue] = useState("");
   const [photoUrlError, setPhotoUrlError] = useState(false);
+  const [photoUrlChecking, setPhotoUrlChecking] = useState(false);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -532,6 +549,7 @@ export default function DashboardPage() {
   const [addPhotoUrlInputOpen, setAddPhotoUrlInputOpen] = useState(false);
   const [addPhotoUrlValue, setAddPhotoUrlValue] = useState("");
   const [addPhotoUrlError, setAddPhotoUrlError] = useState(false);
+  const [addPhotoUrlChecking, setAddPhotoUrlChecking] = useState(false);
   const [addEmojiPickerOpen, setAddEmojiPickerOpen] = useState(false);
   const [addUploadingPhoto, setAddUploadingPhoto] = useState(false);
   const addUploadInputRef = useRef<HTMLInputElement>(null);
@@ -1053,6 +1071,7 @@ export default function DashboardPage() {
     setAddPhotoUrlInputOpen(false);
     setAddPhotoUrlValue("");
     setAddPhotoUrlError(false);
+    setAddPhotoUrlChecking(false);
     setAddEmojiPickerOpen(false);
   };
 
@@ -1122,14 +1141,23 @@ export default function DashboardPage() {
     setAddUploadingPhoto(false);
   };
 
-  const handleAddPhotoUrlSave = () => {
+  const handleAddPhotoUrlSave = async () => {
+    if (addPhotoUrlChecking) return;
     const v = addPhotoUrlValue.trim();
     if (!v) return;
     if (!isValidLink(v)) {
       setAddPhotoUrlError(true);
       return;
     }
-    setAddForm((f) => ({ ...f, photoUrl: normalizeUrl(v), emoji: null }));
+    const normalized = normalizeUrl(v);
+    setAddPhotoUrlChecking(true);
+    const ok = await loadsAsImage(normalized);
+    setAddPhotoUrlChecking(false);
+    if (!ok) {
+      setAddPhotoUrlError(true);
+      return;
+    }
+    setAddForm((f) => ({ ...f, photoUrl: normalized, emoji: null }));
     setAddPhotoUrlInputOpen(false);
     setAddPhotoUrlValue("");
     setAddPhotoUrlError(false);
@@ -1152,6 +1180,7 @@ export default function DashboardPage() {
     setPhotoUrlInputOpen(false);
     setPhotoUrlValue("");
     setPhotoUrlError(false);
+    setPhotoUrlChecking(false);
     setEmojiPickerOpen(false);
     setCategoryMenuOpen(false);
     setViewItem(vi);
@@ -1162,6 +1191,7 @@ export default function DashboardPage() {
     setPhotoUrlInputOpen(false);
     setPhotoUrlValue("");
     setPhotoUrlError(false);
+    setPhotoUrlChecking(false);
     setEmojiPickerOpen(false);
     setCategoryMenuOpen(false);
     setViewItem(null);
@@ -1219,14 +1249,23 @@ export default function DashboardPage() {
     setUploadingPhoto(false);
   };
 
-  const handlePhotoUrlSave = () => {
+  const handlePhotoUrlSave = async () => {
+    if (photoUrlChecking) return;
     const v = photoUrlValue.trim();
     if (!v) return;
     if (!isValidLink(v)) {
       setPhotoUrlError(true);
       return;
     }
-    applyPhotoEdit(normalizeUrl(v), null);
+    const normalized = normalizeUrl(v);
+    setPhotoUrlChecking(true);
+    const ok = await loadsAsImage(normalized);
+    setPhotoUrlChecking(false);
+    if (!ok) {
+      setPhotoUrlError(true);
+      return;
+    }
+    applyPhotoEdit(normalized, null);
     setPhotoUrlInputOpen(false);
     setPhotoUrlValue("");
     setPhotoUrlError(false);
@@ -1816,9 +1855,10 @@ export default function DashboardPage() {
                             <button
                               type="button"
                               onClick={handleAddPhotoUrlSave}
-                              className="mt-1.5 w-full rounded-lg bg-sky-50 py-1.5 font-ui text-sm text-sky-600 transition-colors hover:bg-sky-100"
+                              disabled={addPhotoUrlChecking}
+                              className="mt-1.5 w-full rounded-lg bg-sky-50 py-1.5 font-ui text-sm text-sky-600 transition-colors hover:bg-sky-100 disabled:opacity-60"
                             >
-                              Save
+                              {addPhotoUrlChecking ? "Checking…" : "Save"}
                             </button>
                           </div>
                         ) : addEmojiPickerOpen ? (
@@ -2153,6 +2193,10 @@ export default function DashboardPage() {
                 will pull out the item, price, and store, and add it to your
                 collection.
               </p>
+              <p className="mt-2 font-ui text-xs text-slate-400">
+                Tip: paste &ldquo;Show original&rdquo; instead of the visible
+                email to also get a product photo and link.
+              </p>
             </div>
             <textarea
               value={emailPasteText}
@@ -2354,9 +2398,10 @@ export default function DashboardPage() {
                             <button
                               type="button"
                               onClick={handlePhotoUrlSave}
-                              className="mt-1.5 w-full rounded-lg bg-sky-50 py-1.5 font-ui text-sm text-sky-600 transition-colors hover:bg-sky-100"
+                              disabled={photoUrlChecking}
+                              className="mt-1.5 w-full rounded-lg bg-sky-50 py-1.5 font-ui text-sm text-sky-600 transition-colors hover:bg-sky-100 disabled:opacity-60"
                             >
-                              Save
+                              {photoUrlChecking ? "Checking…" : "Save"}
                             </button>
                           </div>
                         ) : emojiPickerOpen ? (
