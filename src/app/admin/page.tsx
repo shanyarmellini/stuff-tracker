@@ -53,13 +53,18 @@ function linkHostname(url: string | null): string | null {
 export default async function AdminPage() {
   const supabase = createAdminClient();
 
-  const [{ data: usersData }, { data: itemsData }] = await Promise.all([
-    supabase.auth.admin.listUsers(),
-    supabase
-      .from("items")
-      .select("*")
-      .order("created_at", { ascending: false }),
-  ]);
+  const [{ data: usersData }, { data: itemsData, error: itemsError }] =
+    await Promise.all([
+      supabase.auth.admin.listUsers(),
+      supabase
+        .from("items")
+        .select("*")
+        .order("created_at", { ascending: false }),
+    ]);
+
+  if (itemsError) {
+    console.error("Admin page failed to load items:", itemsError);
+  }
 
   const users: UserRecord[] = usersData?.users ?? [];
   const items: Item[] = (itemsData as Item[]) ?? [];
