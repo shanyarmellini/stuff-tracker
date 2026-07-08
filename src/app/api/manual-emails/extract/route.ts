@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { extractPurchasesFromEmails } from "~/lib/ai/extractPurchases";
 import { extractFirstImageUrl, stripHtml } from "~/lib/email/html";
+import { LOOKS_LIKE_RAW_EMAIL, parseRawEmail } from "~/lib/email/mime";
 import { createClient } from "~/lib/supabase/server";
 
 const LOOKS_LIKE_HTML = /<[a-z][\s\S]*>/i;
@@ -38,9 +39,22 @@ export async function POST(request: Request) {
     .eq("user_id", user.id)
     .single();
 
-  const isHtml = LOOKS_LIKE_HTML.test(trimmed);
-  const bodyText = isHtml ? stripHtml(trimmed) : trimmed;
-  const imageUrl = isHtml ? extractFirstImageUrl(trimmed) : null;
+  let source = trimmed;
+  let forceHtml = false;
+  if (LOOKS_LIKE_RAW_EMAIL.test(trimmed)) {
+    const parsed = parseRawEmail(trimmed);
+    if (parsed.html) {
+      source = parsed.html;
+      forceHtml = true;
+    } else if (parsed.text) {
+      source = parsed.text;
+      forceHtml = false;
+    }
+  }
+
+  const isHtml = forceHtml || LOOKS_LIKE_HTML.test(source);
+  const bodyText = isHtml ? stripHtml(source) : source;
+  const imageUrl = isHtml ? extractFirstImageUrl(source) : null;
 
   let extracted: Awaited<ReturnType<typeof extractPurchasesFromEmails>>;
   try {

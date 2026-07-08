@@ -18,13 +18,17 @@ export function stripHtml(html: string): string {
 
 export function extractFirstImageUrl(html: string): string | null {
   const tags = html.matchAll(/<img[^>]+src=["']([^"']+)["'][^>]*>/gi);
+  let best: { src: string; area: number } | null = null;
   for (const [tag, src] of tags) {
     if (!src?.startsWith("http") || /track|pixel|spacer|beacon/i.test(src))
       continue;
     const width = Number(tag.match(/width=["']?(\d+)/i)?.[1] ?? "");
     const height = Number(tag.match(/height=["']?(\d+)/i)?.[1] ?? "");
     if ((width && width < 40) || (height && height < 40)) continue;
-    return src;
+    // Prefer the largest qualifying image (product photos tend to dwarf
+    // logos/icons), falling back to the first one when sizes are unknown.
+    const area = width && height ? width * height : 0;
+    if (!best || area > best.area) best = { src, area };
   }
-  return null;
+  return best?.src ?? null;
 }
