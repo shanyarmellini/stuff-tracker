@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "~/lib/supabase/client";
+import { useSettings } from "~/lib/use-settings";
 import { cn } from "~/lib/utils";
 
 type Item = {
@@ -499,6 +501,7 @@ function linkHostname(url: string | null): string | null {
 }
 
 export default function DashboardPage() {
+  const { settings } = useSettings();
   const [activeCategory, setActiveCategory] = useState("all");
   const [search, setSearch] = useState("");
   const [items, setItems] = useState<Item[]>([]);
@@ -1460,12 +1463,12 @@ export default function DashboardPage() {
         <div className="flex flex-1 flex-col overflow-hidden">
           {/* Top-right nav */}
           <div className="flex shrink-0 justify-end gap-2 px-8 py-3">
-            <button
-              type="button"
+            <Link
+              href="/dashboard/account"
               className="rounded-lg border border-sky-200 bg-white px-4 py-1.5 text-xs text-slate-500 font-ui transition-colors hover:bg-sky-50 hover:text-sky-600"
             >
               Account
-            </button>
+            </Link>
             <button
               type="button"
               onClick={() => setShowEmailModal(true)}
@@ -1473,13 +1476,13 @@ export default function DashboardPage() {
             >
               Add from email
             </button>
-            <button
-              type="button"
+            <Link
+              href="/dashboard/settings"
               className="flex items-center gap-1.5 rounded-lg border border-sky-200 bg-white px-4 py-1.5 text-xs text-slate-500 font-ui transition-colors hover:bg-sky-50 hover:text-sky-600"
             >
               <SettingsIcon />
               Settings
-            </button>
+            </Link>
           </div>
 
           {/* Scrollable content */}
@@ -1620,7 +1623,12 @@ export default function DashboardPage() {
                 ) : (
                   <div
                     key={editKey}
-                    className="grid grid-cols-2 gap-4 [grid-auto-rows:240px] sm:grid-cols-3 lg:grid-cols-4"
+                    className={cn(
+                      "grid gap-4 [grid-auto-rows:240px]",
+                      settings.layout === "list"
+                        ? "grid-cols-1"
+                        : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4",
+                    )}
                   >
                     <div className="flex h-full flex-col gap-4">
                       <button
@@ -2221,11 +2229,11 @@ export default function DashboardPage() {
               <p className="mt-2 font-ui text-xs text-slate-400">
                 Tip: paste &ldquo;Show original&rdquo; instead of the visible
                 email to also get a product photo and link. In Gmail, open the
-                email and click the &#8942; (more) menu. If you don&rsquo;t see
-                &ldquo;Show original&rdquo; there, click &ldquo;Switch to
-                advanced toolbar&rdquo; first, then open the &#8942; menu again
-                and choose &ldquo;Show original&rdquo; — paste that raw source
-                here instead of the rendered email text.
+                actual email itself (not an order-tracking summary card) — the
+                &#8942; (more) menu you want is on the right side of that email,
+                a little below the top toolbar, next to reply/forward. Click it
+                and choose &ldquo;Show original,&rdquo; then paste that raw
+                source here instead of the rendered email text.
               </p>
             </div>
             <textarea
