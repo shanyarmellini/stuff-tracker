@@ -2220,7 +2220,12 @@ export default function DashboardPage() {
               </p>
               <p className="mt-2 font-ui text-xs text-slate-400">
                 Tip: paste &ldquo;Show original&rdquo; instead of the visible
-                email to also get a product photo and link.
+                email to also get a product photo and link. In Gmail, open the
+                email and click the &#8942; (more) menu. If you don&rsquo;t see
+                &ldquo;Show original&rdquo; there, click &ldquo;Switch to
+                advanced toolbar&rdquo; first, then open the &#8942; menu again
+                and choose &ldquo;Show original&rdquo; — paste that raw source
+                here instead of the rendered email text.
               </p>
             </div>
             <textarea
