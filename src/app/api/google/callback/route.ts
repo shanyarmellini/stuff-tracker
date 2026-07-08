@@ -8,7 +8,7 @@ export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const redirectWithError = (message: string) =>
     NextResponse.redirect(
-      `${origin}/dashboard?gmail_error=${encodeURIComponent(message)}`,
+      `${origin}/dashboard/emails?gmail_error=${encodeURIComponent(message)}`,
     );
 
   const deniedOrError = searchParams.get("error");
@@ -67,5 +67,5 @@ export async function GET(request: Request) {
     return redirectWithError("Something went wrong connecting to Google.");
   }
 
-  return NextResponse.redirect(`${origin}/dashboard`);
+  return NextResponse.redirect(`${origin}/dashboard/emails`);
 }
