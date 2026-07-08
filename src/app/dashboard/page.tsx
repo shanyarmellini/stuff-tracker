@@ -1103,7 +1103,7 @@ export default function DashboardPage() {
       const added = data.added ?? 0;
       if (added === 0) {
         setEmailPasteResult(
-          "No purchase was found in that email. Try pasting an order confirmation.",
+          "No purchase was found in that email. Paste the order confirmation you got right after checkout (it should show a price) — not a shipping or delivery update, which won't have one.",
         );
       } else {
         setEmailPasteResult(
