@@ -12,6 +12,7 @@ type Item = {
   photo_url: string | null;
   emoji: string | null;
   category: string | null;
+  sort_order: number;
   created_at: string;
 };
 
@@ -25,6 +26,7 @@ type ViewItem = {
   photoUrl: string | null;
   emoji: string | null;
   gradient: string | null;
+  category: string | null;
 };
 
 type HistoryRecord =
@@ -32,7 +34,7 @@ type HistoryRecord =
       type: "field-edit";
       target: "item" | "placeholder";
       id: string;
-      field: "name" | "price" | "link";
+      field: "name" | "price" | "link" | "category";
       oldValue: string | number | null;
       newValue: string | number | null;
     }
@@ -44,6 +46,12 @@ type HistoryRecord =
       oldEmoji: string | null;
       newPhotoUrl: string | null;
       newEmoji: string | null;
+    }
+  | {
+      type: "reorder";
+      target: "item";
+      order: string[];
+      prevOrder: string[];
     }
   | { type: "delete"; target: "item"; id: string; item: Item; index: number }
   | {
@@ -139,6 +147,26 @@ function ExternalLinkIcon() {
       <path d="M15 3h6v6" />
       <path d="M10 14 21 3" />
       <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+    </svg>
+  );
+}
+
+function ChevronDownIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={cn("shrink-0 text-slate-400 transition-transform", className)}
+    >
+      <path d="m6 9 6 6 6-6" />
     </svg>
   );
 }
@@ -363,6 +391,22 @@ function isValidLink(value: string): boolean {
   }
 }
 
+function loadsAsImage(url: string, timeoutMs = 8000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const img = new window.Image();
+    let settled = false;
+    const finish = (result: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    img.onload = () => finish(true);
+    img.onerror = () => finish(false);
+    setTimeout(() => finish(false), timeoutMs);
+    img.src = url;
+  });
+}
+
 function linkHostname(url: string | null): string | null {
   if (!url) return null;
   try {
@@ -394,7 +438,9 @@ export default function DashboardPage() {
   const [photoUrlInputOpen, setPhotoUrlInputOpen] = useState(false);
   const [photoUrlValue, setPhotoUrlValue] = useState("");
   const [photoUrlError, setPhotoUrlError] = useState(false);
+  const [photoUrlChecking, setPhotoUrlChecking] = useState(false);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -418,6 +464,7 @@ export default function DashboardPage() {
   const [addPhotoUrlInputOpen, setAddPhotoUrlInputOpen] = useState(false);
   const [addPhotoUrlValue, setAddPhotoUrlValue] = useState("");
   const [addPhotoUrlError, setAddPhotoUrlError] = useState(false);
+  const [addPhotoUrlChecking, setAddPhotoUrlChecking] = useState(false);
   const [addEmojiPickerOpen, setAddEmojiPickerOpen] = useState(false);
   const [addUploadingPhoto, setAddUploadingPhoto] = useState(false);
   const addUploadInputRef = useRef<HTMLInputElement>(null);
@@ -443,6 +490,8 @@ export default function DashboardPage() {
   const [itemsLoaded, setItemsLoaded] = useState(false);
   const [displayedPlaceholders, setDisplayedPlaceholders] =
     useState(PLACEHOLDER_ITEMS);
+  const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
+  const dragStartOrderRef = useRef<string[] | null>(null);
   const [categories, setCategories] = useState<{ id: string; label: string }[]>(
     [{ id: "all", label: "All" }],
   );
@@ -477,7 +526,7 @@ export default function DashboardPage() {
         supabase
           .from("items")
           .select("*")
-          .order("created_at", { ascending: false }),
+          .order("sort_order", { ascending: true }),
       ]).then(([{ data: profile }, { data: itemsData }]) => {
         const profileTypes: string[] = profile?.item_types ?? [];
         const items = (itemsData ?? []) as Item[];
@@ -588,6 +637,14 @@ export default function DashboardPage() {
       setCategories((prev) =>
         prev.map((c) => (c.id === record.id ? { ...c, label } : c)),
       );
+    } else if (record.type === "reorder") {
+      const order = isUndo ? record.prevOrder : record.order;
+      setItems((prev) => {
+        const byId = new Map(prev.map((item) => [item.id, item]));
+        return order
+          .map((id) => byId.get(id))
+          .filter((item): item is Item => item !== undefined);
+      });
     } else {
       if (isUndo) {
         if (record.target === "item") {
@@ -634,7 +691,7 @@ export default function DashboardPage() {
 
   const handleItemChange = (
     id: string,
-    field: "name" | "price" | "link",
+    field: "name" | "price" | "link" | "category",
     value: string | number,
   ) => {
     setItems((prev) =>
@@ -670,6 +727,50 @@ export default function DashboardPage() {
     if (next.length === 0) setIsEditing(false);
   };
 
+  const handleItemDragStart = (
+    e: React.DragEvent<HTMLDivElement>,
+    id: string,
+  ) => {
+    dragStartOrderRef.current = items.map((item) => item.id);
+    setDraggedItemId(id);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleItemDragOver = (
+    e: React.DragEvent<HTMLDivElement>,
+    targetId: string,
+  ) => {
+    e.preventDefault();
+    if (!draggedItemId || draggedItemId === targetId) return;
+    setItems((prev) => {
+      const dragIndex = prev.findIndex((item) => item.id === draggedItemId);
+      const targetIndex = prev.findIndex((item) => item.id === targetId);
+      if (dragIndex === -1 || targetIndex === -1 || dragIndex === targetIndex) {
+        return prev;
+      }
+      const next = [...prev];
+      const [moved] = next.splice(dragIndex, 1);
+      next.splice(targetIndex, 0, moved);
+      return next;
+    });
+  };
+
+  const handleItemDragEnd = () => {
+    const startOrder = dragStartOrderRef.current;
+    dragStartOrderRef.current = null;
+    setDraggedItemId(null);
+    if (!startOrder) return;
+    const endOrder = items.map((item) => item.id);
+    if (startOrder.join(",") !== endOrder.join(",")) {
+      pushHistory({
+        type: "reorder",
+        target: "item",
+        prevOrder: startOrder,
+        order: endOrder,
+      });
+    }
+  };
+
   const handleDone = async () => {
     setIsEditing(false);
     const snap = editSnapshot;
@@ -681,7 +782,14 @@ export default function DashboardPage() {
     const supabase = createClient();
     const saves: PromiseLike<{ error: { message: string } | null }>[] = [];
     if (snap && items.length > 0) {
-      const changed = items.filter((item) => {
+      const orderChanged =
+        items.map((item) => item.id).join(",") !==
+        snap.items.map((item) => item.id).join(",");
+      const orderedItems = orderChanged
+        ? items.map((item, index) => ({ ...item, sort_order: index }))
+        : items;
+      if (orderChanged) setItems(orderedItems);
+      const changed = orderedItems.filter((item) => {
         const orig = snap.items.find((i) => i.id === item.id);
         return (
           orig &&
@@ -689,7 +797,9 @@ export default function DashboardPage() {
             orig.price !== item.price ||
             orig.link !== item.link ||
             orig.photo_url !== item.photo_url ||
-            orig.emoji !== item.emoji)
+            orig.emoji !== item.emoji ||
+            orig.category !== item.category ||
+            orig.sort_order !== item.sort_order)
         );
       });
       saves.push(
@@ -702,6 +812,8 @@ export default function DashboardPage() {
               link: item.link,
               photo_url: item.photo_url,
               emoji: item.emoji,
+              category: item.category,
+              sort_order: item.sort_order,
             })
             .eq("id", item.id),
         ),
@@ -777,6 +889,8 @@ export default function DashboardPage() {
       return;
     }
     const supabase = createClient();
+    const minSortOrder =
+      items.length > 0 ? Math.min(...items.map((item) => item.sort_order)) : 1;
     const { data, error } = await supabase
       .from("items")
       .insert({
@@ -785,6 +899,7 @@ export default function DashboardPage() {
         price: parseFloat(addForm.price) || 0,
         link: addForm.link.trim() || null,
         category: addForm.category || null,
+        sort_order: minSortOrder - 1,
         photo_url: addForm.photoUrl,
         emoji: addForm.emoji,
       })
@@ -842,6 +957,7 @@ export default function DashboardPage() {
     setAddPhotoUrlInputOpen(false);
     setAddPhotoUrlValue("");
     setAddPhotoUrlError(false);
+    setAddPhotoUrlChecking(false);
     setAddEmojiPickerOpen(false);
   };
 
@@ -867,14 +983,23 @@ export default function DashboardPage() {
     setAddUploadingPhoto(false);
   };
 
-  const handleAddPhotoUrlSave = () => {
+  const handleAddPhotoUrlSave = async () => {
+    if (addPhotoUrlChecking) return;
     const v = addPhotoUrlValue.trim();
     if (!v) return;
     if (!isValidLink(v)) {
       setAddPhotoUrlError(true);
       return;
     }
-    setAddForm((f) => ({ ...f, photoUrl: normalizeUrl(v), emoji: null }));
+    const normalized = normalizeUrl(v);
+    setAddPhotoUrlChecking(true);
+    const ok = await loadsAsImage(normalized);
+    setAddPhotoUrlChecking(false);
+    if (!ok) {
+      setAddPhotoUrlError(true);
+      return;
+    }
+    setAddForm((f) => ({ ...f, photoUrl: normalized, emoji: null }));
     setAddPhotoUrlInputOpen(false);
     setAddPhotoUrlValue("");
     setAddPhotoUrlError(false);
@@ -897,7 +1022,9 @@ export default function DashboardPage() {
     setPhotoUrlInputOpen(false);
     setPhotoUrlValue("");
     setPhotoUrlError(false);
+    setPhotoUrlChecking(false);
     setEmojiPickerOpen(false);
+    setCategoryMenuOpen(false);
     setViewItem(vi);
   };
 
@@ -906,8 +1033,25 @@ export default function DashboardPage() {
     setPhotoUrlInputOpen(false);
     setPhotoUrlValue("");
     setPhotoUrlError(false);
+    setPhotoUrlChecking(false);
     setEmojiPickerOpen(false);
+    setCategoryMenuOpen(false);
     setViewItem(null);
+  };
+
+  const handleViewCategoryChange = (categoryId: string) => {
+    setCategoryMenuOpen(false);
+    if (!viewItemId || !viewItem || categoryId === viewItem.category) return;
+    pushHistory({
+      type: "field-edit",
+      target: "item",
+      id: viewItemId,
+      field: "category",
+      oldValue: viewItem.category,
+      newValue: categoryId,
+    });
+    handleItemChange(viewItemId, "category", categoryId);
+    setViewItem((prev) => (prev ? { ...prev, category: categoryId } : prev));
   };
 
   const applyPhotoEdit = (photoUrl: string | null, emoji: string | null) => {
@@ -947,14 +1091,23 @@ export default function DashboardPage() {
     setUploadingPhoto(false);
   };
 
-  const handlePhotoUrlSave = () => {
+  const handlePhotoUrlSave = async () => {
+    if (photoUrlChecking) return;
     const v = photoUrlValue.trim();
     if (!v) return;
     if (!isValidLink(v)) {
       setPhotoUrlError(true);
       return;
     }
-    applyPhotoEdit(normalizeUrl(v), null);
+    const normalized = normalizeUrl(v);
+    setPhotoUrlChecking(true);
+    const ok = await loadsAsImage(normalized);
+    setPhotoUrlChecking(false);
+    if (!ok) {
+      setPhotoUrlError(true);
+      return;
+    }
+    applyPhotoEdit(normalized, null);
     setPhotoUrlInputOpen(false);
     setPhotoUrlValue("");
     setPhotoUrlError(false);
@@ -1175,7 +1328,7 @@ export default function DashboardPage() {
             <div
               className={cn(
                 "mb-8 grid gap-4",
-                isEditing ? "grid-cols-4" : "grid-cols-3",
+                isEditing ? "grid-cols-4" : "grid-cols-2",
               )}
             >
               <div className="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm">
@@ -1194,7 +1347,7 @@ export default function DashboardPage() {
                   {formatMoney(totalSpent)}
                 </p>
               </div>
-              {isEditing ? (
+              {isEditing && (
                 <>
                   <button
                     type="button"
@@ -1216,25 +1369,6 @@ export default function DashboardPage() {
                     </span>
                   </button>
                 </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditSnapshot({
-                      items: [...items],
-                      placeholders: [...displayedPlaceholders],
-                      categories: [...categories],
-                    });
-                    setEditHistory({ stack: [], index: -1 });
-                    setIsEditing(true);
-                  }}
-                  className="flex items-center justify-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 p-5 shadow-sm transition-colors hover:bg-sky-100"
-                >
-                  <PencilIcon />
-                  <span className="font-display text-lg tracking-wide text-sky-600">
-                    Edit Items
-                  </span>
-                </button>
               )}
             </div>
 
@@ -1304,16 +1438,38 @@ export default function DashboardPage() {
                     key={editKey}
                     className="grid grid-cols-2 gap-4 [grid-auto-rows:240px] sm:grid-cols-3 lg:grid-cols-4"
                   >
-                    <button
-                      type="button"
-                      onClick={() => setShowAddModal(true)}
-                      className="flex h-full flex-col items-center justify-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 shadow-sm transition-colors hover:bg-sky-100"
-                    >
-                      <PlusIcon />
-                      <span className="font-display text-lg tracking-wide text-sky-600">
-                        Add item
-                      </span>
-                    </button>
+                    <div className="flex h-full flex-col gap-4">
+                      <button
+                        type="button"
+                        onClick={() => setShowAddModal(true)}
+                        className="flex flex-1 flex-col items-center justify-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 shadow-sm transition-colors hover:bg-sky-100"
+                      >
+                        <PlusIcon />
+                        <span className="font-display text-lg tracking-wide text-sky-600">
+                          Add item
+                        </span>
+                      </button>
+                      {!isEditing && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditSnapshot({
+                              items: [...items],
+                              placeholders: [...displayedPlaceholders],
+                              categories: [...categories],
+                            });
+                            setEditHistory({ stack: [], index: -1 });
+                            setIsEditing(true);
+                          }}
+                          className="flex flex-1 flex-col items-center justify-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 shadow-sm transition-colors hover:bg-sky-100"
+                        >
+                          <PencilIcon />
+                          <span className="font-display text-lg tracking-wide text-sky-600">
+                            Edit
+                          </span>
+                        </button>
+                      )}
+                    </div>
                     {filteredItems.map((item) => {
                       const hostname = linkHostname(item.link);
                       return (
@@ -1327,6 +1483,11 @@ export default function DashboardPage() {
                               ? `Edit ${item.name}`
                               : `View ${item.name}`
                           }
+                          draggable={isEditing}
+                          onDragStart={(e) => handleItemDragStart(e, item.id)}
+                          onDragOver={(e) => handleItemDragOver(e, item.id)}
+                          onDrop={(e) => e.preventDefault()}
+                          onDragEnd={handleItemDragEnd}
                           onClick={() =>
                             openViewItem({
                               id: item.id,
@@ -1336,6 +1497,7 @@ export default function DashboardPage() {
                               photoUrl: item.photo_url,
                               emoji: item.emoji,
                               gradient: null,
+                              category: item.category,
                             })
                           }
                           onKeyDown={(e) => {
@@ -1349,14 +1511,16 @@ export default function DashboardPage() {
                                 photoUrl: item.photo_url,
                                 emoji: item.emoji,
                                 gradient: null,
+                                category: item.category,
                               });
                             }
                           }}
                           className={cn(
-                            "relative flex h-full cursor-pointer flex-col rounded-2xl bg-white p-3 shadow-sm transition-all hover:shadow-md",
+                            "relative flex h-full flex-col rounded-2xl bg-white p-3 shadow-sm transition-all hover:shadow-md",
                             isEditing
-                              ? "border-2 border-sky-300"
-                              : "border border-sky-100",
+                              ? "cursor-grab border-2 border-sky-300 active:cursor-grabbing"
+                              : "cursor-pointer border border-sky-100",
+                            draggedItemId === item.id && "opacity-40",
                           )}
                         >
                           {isEditing && (
@@ -1383,7 +1547,8 @@ export default function DashboardPage() {
                               <img
                                 src={item.photo_url}
                                 alt={item.name}
-                                className="h-full w-full object-cover"
+                                draggable={false}
+                                className="h-full w-full object-contain"
                               />
                             ) : (
                               <div className="flex h-full items-center justify-center">
@@ -1395,7 +1560,7 @@ export default function DashboardPage() {
                           </div>
 
                           <div>
-                            <p className="font-ui text-base font-semibold text-slate-700">
+                            <p className="truncate font-ui text-base font-semibold text-slate-700">
                               ${item.price.toFixed(2)}
                             </p>
                             {hostname && item.link && (
@@ -1407,6 +1572,7 @@ export default function DashboardPage() {
                                 }
                                 target="_blank"
                                 rel="noreferrer"
+                                draggable={false}
                                 onClick={(e) => e.stopPropagation()}
                                 className="flex min-w-0 items-center gap-1 font-ui text-xs text-sky-400 transition-colors hover:text-sky-500"
                               >
@@ -1465,7 +1631,7 @@ export default function DashboardPage() {
                       <img
                         src={addForm.photoUrl}
                         alt="Item preview"
-                        className="h-full w-full object-cover"
+                        className="h-full w-full object-contain"
                       />
                     ) : (
                       <span className="text-3xl text-slate-300">
@@ -1530,9 +1696,10 @@ export default function DashboardPage() {
                             <button
                               type="button"
                               onClick={handleAddPhotoUrlSave}
-                              className="mt-1.5 w-full rounded-lg bg-sky-50 py-1.5 font-ui text-sm text-sky-600 transition-colors hover:bg-sky-100"
+                              disabled={addPhotoUrlChecking}
+                              className="mt-1.5 w-full rounded-lg bg-sky-50 py-1.5 font-ui text-sm text-sky-600 transition-colors hover:bg-sky-100 disabled:opacity-60"
                             >
-                              Save
+                              {addPhotoUrlChecking ? "Checking…" : "Save"}
                             </button>
                           </div>
                         ) : addEmojiPickerOpen ? (
@@ -1707,24 +1874,9 @@ export default function DashboardPage() {
                           addForm.category)
                         : "Select a category"}
                     </span>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                      className={cn(
-                        "shrink-0 text-slate-400 transition-transform",
-                        addCatOpen && "rotate-180",
-                      )}
-                    >
-                      <path d="m6 9 6 6 6-6" />
-                    </svg>
+                    <ChevronDownIcon
+                      className={addCatOpen ? "rotate-180" : undefined}
+                    />
                   </button>
                   {addCatOpen && (
                     <div className="absolute z-10 mt-1 w-full rounded-xl border border-sky-200 bg-white shadow-lg">
@@ -1875,7 +2027,7 @@ export default function DashboardPage() {
           <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
             {isEditing && viewItemId ? (
               <input
-                className="mb-4 w-full bg-transparent font-display text-2xl tracking-wide text-slate-800 outline-none border-b border-sky-200 focus:border-sky-400 pb-1"
+                className="mb-1 w-full bg-transparent font-display text-2xl tracking-wide text-slate-800 outline-none border-b border-sky-200 focus:border-sky-400 pb-1"
                 defaultValue={viewItem.name}
                 onBlur={(e) => {
                   const v = e.target.value;
@@ -1894,9 +2046,60 @@ export default function DashboardPage() {
                 }}
               />
             ) : (
-              <h2 className="mb-4 font-display text-2xl tracking-wide text-slate-800">
+              <h2 className="mb-1 font-display text-2xl tracking-wide text-slate-800">
                 {viewItem.name}
               </h2>
+            )}
+            {isEditing && viewItemId ? (
+              <div className="relative mb-4 inline-block">
+                <button
+                  type="button"
+                  onClick={() => setCategoryMenuOpen((o) => !o)}
+                  className="flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-1 font-ui text-xs uppercase tracking-widest text-sky-600 transition-colors hover:bg-sky-100"
+                >
+                  {categories.find((c) => c.id === viewItem.category)?.label ??
+                    "Select a category"}
+                  <ChevronDownIcon
+                    className={categoryMenuOpen ? "rotate-180" : undefined}
+                  />
+                </button>
+                {categoryMenuOpen && (
+                  <>
+                    <button
+                      type="button"
+                      aria-label="Close category menu"
+                      className="fixed inset-0 z-[9] cursor-default"
+                      onClick={() => setCategoryMenuOpen(false)}
+                    />
+                    <div className="absolute z-20 mt-1 max-h-40 w-48 overflow-y-auto rounded-xl border border-sky-200 bg-white p-1 shadow-lg">
+                      {categories
+                        .filter((c) => c.id !== "all")
+                        .map((c) => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => handleViewCategoryChange(c.id)}
+                            className={cn(
+                              "w-full rounded-lg px-3 py-2 text-left font-ui text-sm transition-colors hover:bg-sky-50",
+                              viewItem.category === c.id
+                                ? "text-sky-600"
+                                : "text-slate-700",
+                            )}
+                          >
+                            {c.label}
+                          </button>
+                        ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : (
+              viewItem.category && (
+                <p className="mb-4 font-ui text-xs uppercase tracking-widest text-slate-400">
+                  {categories.find((c) => c.id === viewItem.category)?.label ??
+                    viewItem.category}
+                </p>
+              )
             )}
             <div
               className={cn(
@@ -1913,7 +2116,7 @@ export default function DashboardPage() {
                 <img
                   src={viewItem.photoUrl}
                   alt={viewItem.name}
-                  className="h-full w-full object-cover"
+                  className="h-full w-full object-contain"
                 />
               ) : (
                 <span className="text-8xl text-slate-300">
@@ -1978,9 +2181,10 @@ export default function DashboardPage() {
                             <button
                               type="button"
                               onClick={handlePhotoUrlSave}
-                              className="mt-1.5 w-full rounded-lg bg-sky-50 py-1.5 font-ui text-sm text-sky-600 transition-colors hover:bg-sky-100"
+                              disabled={photoUrlChecking}
+                              className="mt-1.5 w-full rounded-lg bg-sky-50 py-1.5 font-ui text-sm text-sky-600 transition-colors hover:bg-sky-100 disabled:opacity-60"
                             >
-                              Save
+                              {photoUrlChecking ? "Checking…" : "Save"}
                             </button>
                           </div>
                         ) : emojiPickerOpen ? (
