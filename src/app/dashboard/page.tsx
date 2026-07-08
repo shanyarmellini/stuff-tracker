@@ -2236,14 +2236,25 @@ export default function DashboardPage() {
                 source here instead of the rendered email text.
               </p>
             </div>
-            <textarea
-              value={emailPasteText}
-              onChange={(e) => setEmailPasteText(e.target.value)}
-              placeholder="From: orders@store.com&#10;Subject: Your order has shipped&#10;&#10;Thanks for your order..."
-              rows={10}
-              disabled={emailPasteLoading}
-              className="w-full resize-none rounded-xl border border-sky-100 bg-white px-4 py-3 font-ui text-sm text-slate-700 shadow-sm outline-none placeholder:text-slate-300 focus:border-sky-300 focus:ring-2 focus:ring-sky-100 transition-all disabled:opacity-60"
-            />
+            <div className="relative">
+              <textarea
+                value={emailPasteText}
+                onChange={(e) => setEmailPasteText(e.target.value)}
+                placeholder="From: orders@store.com&#10;Subject: Your order has shipped&#10;&#10;Thanks for your order..."
+                rows={10}
+                disabled={emailPasteLoading}
+                className="w-full resize-none rounded-xl border border-sky-100 bg-white px-4 py-3 pr-16 font-ui text-sm text-slate-700 shadow-sm outline-none placeholder:text-slate-300 focus:border-sky-300 focus:ring-2 focus:ring-sky-100 transition-all disabled:opacity-60"
+              />
+              {emailPasteText && !emailPasteLoading && (
+                <button
+                  type="button"
+                  onClick={() => setEmailPasteText("")}
+                  className="absolute right-3 top-3 rounded-full bg-slate-100 px-2 py-1 font-ui text-xs font-medium text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-600"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
             {emailPasteError && (
               <p className="font-ui text-sm text-red-500">{emailPasteError}</p>
             )}
