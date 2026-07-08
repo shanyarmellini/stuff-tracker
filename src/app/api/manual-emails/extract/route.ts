@@ -1,3 +1,4 @@
+import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { extractPurchasesFromEmails } from "~/lib/ai/extractPurchases";
 import { createClient } from "~/lib/supabase/server";
@@ -34,15 +35,41 @@ export async function POST(request: Request) {
     .eq("user_id", user.id)
     .single();
 
-  const extracted = await extractPurchasesFromEmails([
-    {
-      id: crypto.randomUUID(),
-      from: "",
-      subject: "",
-      bodyText: trimmed.slice(0, 12000),
-      imageUrl: null,
-    },
-  ]);
+  let extracted: Awaited<ReturnType<typeof extractPurchasesFromEmails>>;
+  try {
+    extracted = await extractPurchasesFromEmails([
+      {
+        id: crypto.randomUUID(),
+        from: "",
+        subject: "",
+        bodyText: trimmed.slice(0, 12000),
+        imageUrl: null,
+      },
+    ]);
+  } catch (err) {
+    if (err instanceof Anthropic.AuthenticationError) {
+      console.error("Anthropic API key is missing or invalid:", err.message);
+      return NextResponse.json(
+        {
+          error:
+            "AI isn't configured yet — check that ANTHROPIC_API_KEY is set correctly.",
+        },
+        { status: 500 },
+      );
+    }
+    if (err instanceof Anthropic.RateLimitError) {
+      console.error("Anthropic rate limit hit:", err.message);
+      return NextResponse.json(
+        { error: "AI is busy right now. Please try again in a moment." },
+        { status: 500 },
+      );
+    }
+    console.error("AI extraction failed:", err);
+    return NextResponse.json(
+      { error: "AI couldn't process that email. Please try again." },
+      { status: 500 },
+    );
+  }
 
   if (extracted.length === 0) {
     return NextResponse.json({ added: 0 });
