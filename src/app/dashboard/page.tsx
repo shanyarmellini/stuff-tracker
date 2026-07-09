@@ -166,7 +166,10 @@ function ChevronDownIcon({ className }: { className?: string }) {
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
-      className={cn("shrink-0 text-slate-400 transition-transform", className)}
+      className={cn(
+        "shrink-0 text-slate-400 dark:text-slate-500 transition-transform",
+        className,
+      )}
     >
       <path d="m6 9 6 6 6-6" />
     </svg>
@@ -1313,9 +1316,9 @@ export default function DashboardPage() {
 
   return (
     <>
-      <div className="flex h-[calc(100vh-3.5rem)] bg-sky-50">
+      <div className="flex h-[calc(100vh-3.5rem)] bg-sky-50 dark:bg-slate-800">
         {/* ── Sidebar ── */}
-        <aside className="flex w-56 shrink-0 flex-col border-r border-sky-100 bg-white">
+        <aside className="flex w-56 shrink-0 flex-col border-r border-sky-100 dark:border-slate-800 bg-white dark:bg-blue-950">
           <div className="flex flex-col gap-0.5 px-3 py-6">
             {categories.map((cat) => (
               <div key={cat.id} className="flex items-center gap-1">
@@ -1358,12 +1361,12 @@ export default function DashboardPage() {
                       className={cn(
                         "w-full rounded-xl bg-transparent px-4 py-2.5 text-left text-base uppercase outline-none transition-colors font-display tracking-wide truncate",
                         activeCategory === cat.id
-                          ? "bg-sky-100 text-sky-700"
-                          : "text-slate-500 hover:bg-sky-50 hover:text-sky-600",
+                          ? "bg-sky-100 dark:bg-slate-700 text-sky-700 dark:text-sky-300"
+                          : "text-slate-500 dark:text-slate-400 hover:bg-sky-50 dark:hover:bg-slate-800 hover:text-sky-600 dark:hover:text-sky-400",
                       )}
                     />
                     {activeCategory === cat.id && renameCatLength >= 30 && (
-                      <p className="px-4 font-ui text-xs text-red-500">
+                      <p className="px-4 font-ui text-xs text-red-500 dark:text-red-400">
                         The 30 character limit has been reached.
                       </p>
                     )}
@@ -1375,8 +1378,8 @@ export default function DashboardPage() {
                     className={cn(
                       "min-w-0 flex-1 rounded-xl px-4 py-2.5 text-left text-base uppercase transition-colors font-display tracking-wide truncate",
                       activeCategory === cat.id
-                        ? "bg-sky-100 text-sky-700"
-                        : "text-slate-500 hover:bg-sky-50 hover:text-sky-600",
+                        ? "bg-sky-100 dark:bg-slate-700 text-sky-700 dark:text-sky-300"
+                        : "text-slate-500 dark:text-slate-400 hover:bg-sky-50 dark:hover:bg-slate-800 hover:text-sky-600 dark:hover:text-sky-400",
                     )}
                   >
                     {cat.label}
@@ -1397,7 +1400,7 @@ export default function DashboardPage() {
                       setCategories(next);
                       if (activeCategory === cat.id) setActiveCategory("all");
                     }}
-                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-300 transition-colors hover:bg-red-50 hover:text-red-400"
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-300 dark:text-slate-600 transition-colors hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-400 dark:hover:text-red-300"
                     aria-label={`Delete ${cat.label} category`}
                   >
                     ×
@@ -1408,7 +1411,7 @@ export default function DashboardPage() {
             {isEditing && (
               <div className="mt-1 flex flex-col gap-0.5 px-4">
                 {newCatInput.length >= 30 && (
-                  <p className="font-ui text-xs text-red-500">
+                  <p className="font-ui text-xs text-red-500 dark:text-red-400">
                     The 30 character limit has been reached.
                   </p>
                 )}
@@ -1452,7 +1455,7 @@ export default function DashboardPage() {
                     setNewCatInput("");
                   }}
                   placeholder="+ Add category"
-                  className="w-full bg-transparent font-display text-base tracking-wide uppercase text-slate-400 outline-none placeholder:text-slate-300"
+                  className="w-full bg-transparent font-display text-base tracking-wide uppercase text-slate-400 dark:text-slate-500 outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600"
                 />
               </div>
             )}
@@ -1465,20 +1468,20 @@ export default function DashboardPage() {
           <div className="flex shrink-0 justify-end gap-2 px-8 py-3">
             <Link
               href="/dashboard/account"
-              className="rounded-lg border border-sky-200 bg-white px-4 py-1.5 text-xs text-slate-500 font-ui transition-colors hover:bg-sky-50 hover:text-sky-600"
+              className="rounded-lg border border-sky-200 dark:border-slate-700 bg-white dark:bg-blue-950 px-4 py-1.5 text-xs text-slate-500 dark:text-slate-400 font-ui transition-colors hover:bg-sky-50 dark:hover:bg-slate-800 hover:text-sky-600 dark:hover:text-sky-400"
             >
               Account
             </Link>
             <button
               type="button"
               onClick={() => setShowEmailModal(true)}
-              className="rounded-lg border border-sky-200 bg-white px-4 py-1.5 text-xs text-slate-500 font-ui transition-colors hover:bg-sky-50 hover:text-sky-600"
+              className="rounded-lg border border-sky-200 dark:border-slate-700 bg-white dark:bg-blue-950 px-4 py-1.5 text-xs text-slate-500 dark:text-slate-400 font-ui transition-colors hover:bg-sky-50 dark:hover:bg-slate-800 hover:text-sky-600 dark:hover:text-sky-400"
             >
               Add from email
             </button>
             <Link
               href="/dashboard/settings"
-              className="flex items-center gap-1.5 rounded-lg border border-sky-200 bg-white px-4 py-1.5 text-xs text-slate-500 font-ui transition-colors hover:bg-sky-50 hover:text-sky-600"
+              className="flex items-center gap-1.5 rounded-lg border border-sky-200 dark:border-slate-700 bg-white dark:bg-blue-950 px-4 py-1.5 text-xs text-slate-500 dark:text-slate-400 font-ui transition-colors hover:bg-sky-50 dark:hover:bg-slate-800 hover:text-sky-600 dark:hover:text-sky-400"
             >
               <SettingsIcon />
               Settings
@@ -1489,17 +1492,19 @@ export default function DashboardPage() {
           <div className="flex-1 overflow-y-auto px-8 pb-10">
             {/* Header */}
             <div className="mb-5">
-              <h1 className="font-display text-4xl tracking-wide text-slate-800">
+              <h1 className="font-display text-4xl tracking-wide text-slate-800 dark:text-slate-100">
                 My Items
               </h1>
               {email && (
-                <p className="font-ui text-sm text-slate-400">{email}</p>
+                <p className="font-ui text-sm text-slate-400 dark:text-slate-500">
+                  {email}
+                </p>
               )}
             </div>
 
             {/* Search bar */}
             <div className="relative mb-6">
-              <div className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-slate-400">
+              <div className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-slate-400 dark:text-slate-500">
                 <SearchIcon />
               </div>
               <input
@@ -1507,7 +1512,7 @@ export default function DashboardPage() {
                 placeholder="Search items…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full rounded-xl border border-sky-100 bg-white py-3 pl-11 pr-4 text-sm font-ui text-slate-700 shadow-sm outline-none placeholder:text-slate-400 focus:border-sky-300 focus:ring-2 focus:ring-sky-100 transition-all"
+                className="w-full rounded-xl border border-sky-100 dark:border-slate-800 bg-white dark:bg-blue-950 py-3 pl-11 pr-4 text-sm font-ui text-slate-700 dark:text-slate-200 shadow-sm outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-sky-300 dark:focus:border-sky-600 focus:ring-2 focus:ring-sky-100 dark:focus:ring-sky-900/40 transition-all"
               />
             </div>
 
@@ -1518,19 +1523,19 @@ export default function DashboardPage() {
                 isEditing ? "grid-cols-4" : "grid-cols-2",
               )}
             >
-              <div className="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm">
-                <p className="font-ui text-xs uppercase tracking-widest text-slate-400">
+              <div className="rounded-2xl border border-sky-100 dark:border-slate-800 bg-white dark:bg-blue-950 p-5 shadow-sm">
+                <p className="font-ui text-xs uppercase tracking-widest text-slate-400 dark:text-slate-500">
                   Total Items
                 </p>
-                <p className="mt-1 font-display text-3xl tracking-wide text-slate-800">
+                <p className="mt-1 font-display text-3xl tracking-wide text-slate-800 dark:text-slate-100">
                   {displayItems.length}
                 </p>
               </div>
-              <div className="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm">
-                <p className="font-ui text-xs uppercase tracking-widest text-slate-400">
+              <div className="rounded-2xl border border-sky-100 dark:border-slate-800 bg-white dark:bg-blue-950 p-5 shadow-sm">
+                <p className="font-ui text-xs uppercase tracking-widest text-slate-400 dark:text-slate-500">
                   Money Spent
                 </p>
-                <p className="mt-1 font-display text-2xl tracking-wide text-slate-800">
+                <p className="mt-1 font-display text-2xl tracking-wide text-slate-800 dark:text-slate-100">
                   {formatMoney(totalSpent)}
                 </p>
               </div>
@@ -1539,9 +1544,9 @@ export default function DashboardPage() {
                   <button
                     type="button"
                     onClick={handleCancel}
-                    className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-5 shadow-sm transition-colors hover:bg-slate-100"
+                    className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-5 shadow-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-600"
                   >
-                    <span className="font-display text-lg tracking-wide text-slate-500">
+                    <span className="font-display text-lg tracking-wide text-slate-500 dark:text-slate-400">
                       Cancel
                     </span>
                   </button>
@@ -1563,18 +1568,18 @@ export default function DashboardPage() {
             {!itemsLoaded ? null : items.length === 0 ? (
               <>
                 <div className="mb-4">
-                  <h2 className="font-display text-2xl tracking-wide text-slate-700">
+                  <h2 className="font-display text-2xl tracking-wide text-slate-700 dark:text-slate-200">
                     {sectionTitle}
                   </h2>
                 </div>
-                <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-sky-200 bg-white py-16">
-                  <p className="font-ui text-sm text-slate-400">
+                <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-sky-200 dark:border-slate-700 bg-white dark:bg-blue-950 py-16">
+                  <p className="font-ui text-sm text-slate-400 dark:text-slate-500">
                     No items yet. Add something to get started.
                   </p>
                   <button
                     type="button"
                     onClick={() => setShowAddModal(true)}
-                    className="flex items-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50 px-5 py-2.5 font-display tracking-wide text-sky-600 transition-colors hover:bg-sky-100"
+                    className="flex items-center gap-1.5 rounded-xl border border-sky-200 dark:border-slate-700 bg-sky-50 dark:bg-slate-800 px-5 py-2.5 font-display tracking-wide text-sky-600 dark:text-sky-400 transition-colors hover:bg-sky-100 dark:hover:bg-slate-600"
                   >
                     <PlusIcon />
                     Add your first item
@@ -1585,7 +1590,7 @@ export default function DashboardPage() {
               <>
                 <div className="mb-4 flex items-center justify-between">
                   <div className="flex items-baseline gap-2">
-                    <h2 className="font-display text-2xl tracking-wide text-slate-700">
+                    <h2 className="font-display text-2xl tracking-wide text-slate-700 dark:text-slate-200">
                       {sectionTitle}
                     </h2>
                   </div>
@@ -1595,7 +1600,7 @@ export default function DashboardPage() {
                         type="button"
                         onClick={handleUndo}
                         disabled={editHistory.index < 0}
-                        className="flex h-8 w-8 items-center justify-center rounded-full border border-sky-200 bg-white text-slate-500 shadow-sm transition-colors hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-30"
+                        className="flex h-8 w-8 items-center justify-center rounded-full border border-sky-200 dark:border-slate-700 bg-white dark:bg-blue-950 text-slate-500 dark:text-slate-400 shadow-sm transition-colors hover:bg-sky-50 dark:hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-30"
                         aria-label="Undo"
                       >
                         <UndoIcon />
@@ -1606,7 +1611,7 @@ export default function DashboardPage() {
                         disabled={
                           editHistory.index >= editHistory.stack.length - 1
                         }
-                        className="flex h-8 w-8 items-center justify-center rounded-full border border-sky-200 bg-white text-slate-500 shadow-sm transition-colors hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-30"
+                        className="flex h-8 w-8 items-center justify-center rounded-full border border-sky-200 dark:border-slate-700 bg-white dark:bg-blue-950 text-slate-500 dark:text-slate-400 shadow-sm transition-colors hover:bg-sky-50 dark:hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-30"
                         aria-label="Redo"
                       >
                         <RedoIcon />
@@ -1615,8 +1620,8 @@ export default function DashboardPage() {
                   )}
                 </div>
                 {filteredItems.length === 0 ? (
-                  <div className="flex h-40 items-center justify-center rounded-2xl border border-dashed border-sky-200 bg-white">
-                    <p className="font-ui text-sm text-slate-400">
+                  <div className="flex h-40 items-center justify-center rounded-2xl border border-dashed border-sky-200 dark:border-slate-700 bg-white dark:bg-blue-950">
+                    <p className="font-ui text-sm text-slate-400 dark:text-slate-500">
                       No items found.
                     </p>
                   </div>
@@ -1634,10 +1639,10 @@ export default function DashboardPage() {
                       <button
                         type="button"
                         onClick={() => setShowAddModal(true)}
-                        className="flex flex-1 flex-col items-center justify-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 shadow-sm transition-colors hover:bg-sky-100"
+                        className="flex flex-1 flex-col items-center justify-center gap-2 rounded-2xl border border-sky-200 dark:border-slate-700 bg-sky-50 dark:bg-slate-800 shadow-sm transition-colors hover:bg-sky-100 dark:hover:bg-slate-600"
                       >
                         <PlusIcon />
-                        <span className="font-display text-lg tracking-wide text-sky-600">
+                        <span className="font-display text-lg tracking-wide text-sky-600 dark:text-sky-400">
                           Add item
                         </span>
                       </button>
@@ -1653,10 +1658,10 @@ export default function DashboardPage() {
                             setEditHistory({ stack: [], index: -1 });
                             setIsEditing(true);
                           }}
-                          className="flex flex-1 flex-col items-center justify-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 shadow-sm transition-colors hover:bg-sky-100"
+                          className="flex flex-1 flex-col items-center justify-center gap-2 rounded-2xl border border-sky-200 dark:border-slate-700 bg-sky-50 dark:bg-slate-800 shadow-sm transition-colors hover:bg-sky-100 dark:hover:bg-slate-600"
                         >
                           <PencilIcon />
-                          <span className="font-display text-lg tracking-wide text-sky-600">
+                          <span className="font-display text-lg tracking-wide text-sky-600 dark:text-sky-400">
                             Edit
                           </span>
                         </button>
@@ -1708,10 +1713,10 @@ export default function DashboardPage() {
                             }
                           }}
                           className={cn(
-                            "relative flex h-full flex-col rounded-2xl bg-white p-3 shadow-sm transition-all hover:shadow-md",
+                            "relative flex h-full flex-col rounded-2xl bg-white dark:bg-blue-950 p-3 shadow-sm transition-all hover:shadow-md",
                             isEditing
-                              ? "cursor-grab border-2 border-sky-300 active:cursor-grabbing"
-                              : "cursor-pointer border border-sky-100",
+                              ? "cursor-grab border-2 border-sky-300 dark:border-slate-600 active:cursor-grabbing"
+                              : "cursor-pointer border border-sky-100 dark:border-slate-800",
                             draggedItemId === item.id && "opacity-40",
                           )}
                         >
@@ -1729,11 +1734,11 @@ export default function DashboardPage() {
                             </button>
                           )}
 
-                          <p className="line-clamp-2 font-display text-2xl leading-tight tracking-wide text-slate-800">
+                          <p className="line-clamp-2 font-display text-2xl leading-tight tracking-wide text-slate-800 dark:text-slate-100">
                             {item.name}
                           </p>
 
-                          <div className="relative my-2 flex-1 overflow-hidden rounded-xl bg-sky-50">
+                          <div className="relative my-2 flex-1 overflow-hidden rounded-xl bg-sky-50 dark:bg-slate-800">
                             {item.photo_url ? (
                               // biome-ignore lint/performance/noImgElement: photo_url can be an arbitrary external URL
                               <img
@@ -1744,7 +1749,7 @@ export default function DashboardPage() {
                               />
                             ) : (
                               <div className="flex h-full items-center justify-center">
-                                <span className="text-4xl text-slate-300">
+                                <span className="text-4xl text-slate-300 dark:text-slate-600">
                                   {item.emoji ?? "📦"}
                                 </span>
                               </div>
@@ -1752,7 +1757,7 @@ export default function DashboardPage() {
                           </div>
 
                           <div>
-                            <p className="truncate font-ui text-base font-semibold text-slate-700">
+                            <p className="truncate font-ui text-base font-semibold text-slate-700 dark:text-slate-200">
                               ${item.price.toFixed(2)}
                             </p>
                             {hostname && item.link && (
@@ -1766,7 +1771,7 @@ export default function DashboardPage() {
                                 rel="noreferrer"
                                 draggable={false}
                                 onClick={(e) => e.stopPropagation()}
-                                className="flex min-w-0 items-center gap-1 font-ui text-xs text-sky-400 transition-colors hover:text-sky-500"
+                                className="flex min-w-0 items-center gap-1 font-ui text-xs text-sky-400 dark:text-sky-300 transition-colors hover:text-sky-500 dark:hover:text-sky-400"
                               >
                                 <span className="truncate">{hostname}</span>
                                 <ExternalLinkIcon />
@@ -1785,14 +1790,14 @@ export default function DashboardPage() {
       </div>
 
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
-            <h2 className="mb-4 font-display text-2xl tracking-wide text-slate-800">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 dark:bg-black/40 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-blue-950 p-6 shadow-xl">
+            <h2 className="mb-4 font-display text-2xl tracking-wide text-slate-800 dark:text-slate-100">
               Add Item
             </h2>
             <div className="flex flex-col gap-3">
               <div>
-                <p className="font-ui text-xs uppercase tracking-widest text-slate-400">
+                <p className="font-ui text-xs uppercase tracking-widest text-slate-400 dark:text-slate-500">
                   Name
                 </p>
                 <input
@@ -1804,18 +1809,18 @@ export default function DashboardPage() {
                   onKeyDown={(e) => {
                     if (e.key === "Enter") handleAddItem();
                   }}
-                  className="mt-1 w-full rounded-xl border border-sky-200 px-3 py-2 font-ui text-sm text-slate-700 outline-none transition-all focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                  className="mt-1 w-full rounded-xl border border-sky-200 dark:border-slate-700 px-3 py-2 font-ui text-sm text-slate-700 dark:text-slate-200 outline-none transition-all focus:border-sky-400 dark:focus:border-sky-500 focus:ring-2 focus:ring-sky-100 dark:focus:ring-sky-900/40"
                   placeholder="Item name"
                 />
               </div>
               <div>
-                <p className="font-ui text-xs uppercase tracking-widest text-slate-400">
+                <p className="font-ui text-xs uppercase tracking-widest text-slate-400 dark:text-slate-500">
                   Photo
                 </p>
                 <div className="relative mt-1 h-20 w-20">
-                  <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-xl bg-sky-50">
+                  <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-xl bg-sky-50 dark:bg-slate-800">
                     {addUploadingPhoto ? (
-                      <p className="font-ui text-[10px] text-slate-400">
+                      <p className="font-ui text-[10px] text-slate-400 dark:text-slate-500">
                         Uploading…
                       </p>
                     ) : addForm.photoUrl ? (
@@ -1826,7 +1831,7 @@ export default function DashboardPage() {
                         className="h-full w-full object-contain"
                       />
                     ) : (
-                      <span className="text-3xl text-slate-300">
+                      <span className="text-3xl text-slate-300 dark:text-slate-600">
                         {addForm.emoji ?? "📦"}
                       </span>
                     )}
@@ -1835,7 +1840,7 @@ export default function DashboardPage() {
                   <button
                     type="button"
                     onClick={() => setAddPhotoMenuOpen((o) => !o)}
-                    className="absolute -bottom-1.5 -right-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-white text-slate-500 shadow-md transition-colors hover:bg-sky-50 hover:text-sky-600"
+                    className="absolute -bottom-1.5 -right-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-white dark:bg-blue-950 text-slate-500 dark:text-slate-400 shadow-md transition-colors hover:bg-sky-50 dark:hover:bg-slate-800 hover:text-sky-600 dark:hover:text-sky-400"
                     aria-label="Edit photo"
                   >
                     <PencilIcon />
@@ -1853,7 +1858,7 @@ export default function DashboardPage() {
                           setAddEmojiPickerOpen(false);
                         }}
                       />
-                      <div className="absolute left-0 top-full z-20 mt-2 w-48 rounded-xl border border-sky-200 bg-white p-1.5 shadow-lg">
+                      <div className="absolute left-0 top-full z-20 mt-2 w-48 rounded-xl border border-sky-200 dark:border-slate-700 bg-white dark:bg-blue-950 p-1.5 shadow-lg">
                         {addPhotoUrlInputOpen ? (
                           <div className="p-1.5">
                             <input
@@ -1874,14 +1879,14 @@ export default function DashboardPage() {
                               }}
                               placeholder="https://example.com/photo.jpg"
                               className={cn(
-                                "w-full rounded-lg border px-2.5 py-1.5 font-ui text-sm text-slate-700 outline-none",
+                                "w-full rounded-lg border px-2.5 py-1.5 font-ui text-sm text-slate-700 dark:text-slate-200 outline-none",
                                 addPhotoUrlError
-                                  ? "border-red-300 focus:border-red-400"
-                                  : "border-sky-200 focus:border-sky-300",
+                                  ? "border-red-300 dark:border-red-800 focus:border-red-400 dark:focus:border-red-500"
+                                  : "border-sky-200 dark:border-slate-700 focus:border-sky-300 dark:focus:border-sky-600",
                               )}
                             />
                             {addPhotoUrlError && (
-                              <p className="mt-1 font-ui text-xs text-red-400">
+                              <p className="mt-1 font-ui text-xs text-red-400 dark:text-red-300">
                                 Please enter a valid image URL
                               </p>
                             )}
@@ -1889,7 +1894,7 @@ export default function DashboardPage() {
                               type="button"
                               onClick={handleAddPhotoUrlSave}
                               disabled={addPhotoUrlChecking}
-                              className="mt-1.5 w-full rounded-lg bg-sky-50 py-1.5 font-ui text-sm text-sky-600 transition-colors hover:bg-sky-100 disabled:opacity-60"
+                              className="mt-1.5 w-full rounded-lg bg-sky-50 dark:bg-slate-800 py-1.5 font-ui text-sm text-sky-600 dark:text-sky-400 transition-colors hover:bg-sky-100 dark:hover:bg-slate-600 disabled:opacity-60"
                             >
                               {addPhotoUrlChecking ? "Checking…" : "Save"}
                             </button>
@@ -1901,7 +1906,7 @@ export default function DashboardPage() {
                                 key={emoji}
                                 type="button"
                                 onClick={() => handleAddChooseEmoji(emoji)}
-                                className="flex h-8 w-8 items-center justify-center rounded-lg text-xl transition-colors hover:bg-sky-50"
+                                className="flex h-8 w-8 items-center justify-center rounded-lg text-xl transition-colors hover:bg-sky-50 dark:hover:bg-slate-800"
                               >
                                 {emoji}
                               </button>
@@ -1912,14 +1917,14 @@ export default function DashboardPage() {
                             <button
                               type="button"
                               onClick={() => setAddPhotoUrlInputOpen(true)}
-                              className="rounded-lg px-3 py-2 text-left font-ui text-sm text-slate-700 transition-colors hover:bg-sky-50"
+                              className="rounded-lg px-3 py-2 text-left font-ui text-sm text-slate-700 dark:text-slate-200 transition-colors hover:bg-sky-50 dark:hover:bg-slate-800"
                             >
                               Paste image URL
                             </button>
                             <button
                               type="button"
                               onClick={() => addUploadInputRef.current?.click()}
-                              className="rounded-lg px-3 py-2 text-left font-ui text-sm text-slate-700 transition-colors hover:bg-sky-50"
+                              className="rounded-lg px-3 py-2 text-left font-ui text-sm text-slate-700 dark:text-slate-200 transition-colors hover:bg-sky-50 dark:hover:bg-slate-800"
                             >
                               Upload from device
                             </button>
@@ -1929,7 +1934,7 @@ export default function DashboardPage() {
                                 onClick={() =>
                                   addCameraInputRef.current?.click()
                                 }
-                                className="rounded-lg px-3 py-2 text-left font-ui text-sm text-slate-700 transition-colors hover:bg-sky-50"
+                                className="rounded-lg px-3 py-2 text-left font-ui text-sm text-slate-700 dark:text-slate-200 transition-colors hover:bg-sky-50 dark:hover:bg-slate-800"
                               >
                                 Take a photo
                               </button>
@@ -1937,7 +1942,7 @@ export default function DashboardPage() {
                             <button
                               type="button"
                               onClick={() => setAddEmojiPickerOpen(true)}
-                              className="rounded-lg px-3 py-2 text-left font-ui text-sm text-slate-700 transition-colors hover:bg-sky-50"
+                              className="rounded-lg px-3 py-2 text-left font-ui text-sm text-slate-700 dark:text-slate-200 transition-colors hover:bg-sky-50 dark:hover:bg-slate-800"
                             >
                               Choose an emoji
                             </button>
@@ -1945,7 +1950,7 @@ export default function DashboardPage() {
                               <button
                                 type="button"
                                 onClick={handleAddRemovePhoto}
-                                className="rounded-lg px-3 py-2 text-left font-ui text-sm text-red-500 transition-colors hover:bg-red-50"
+                                className="rounded-lg px-3 py-2 text-left font-ui text-sm text-red-500 dark:text-red-400 transition-colors hover:bg-red-50 dark:hover:bg-red-950/40"
                               >
                                 Remove photo
                               </button>
@@ -1980,11 +1985,13 @@ export default function DashboardPage() {
                 </div>
               </div>
               <div>
-                <p className="font-ui text-xs uppercase tracking-widest text-slate-400">
+                <p className="font-ui text-xs uppercase tracking-widest text-slate-400 dark:text-slate-500">
                   Price
                 </p>
-                <div className="mt-1 flex items-center gap-1 rounded-xl border border-sky-200 px-3 py-2 transition-all focus-within:border-sky-400 focus-within:ring-2 focus-within:ring-sky-100">
-                  <span className="font-ui text-sm text-slate-400">$</span>
+                <div className="mt-1 flex items-center gap-1 rounded-xl border border-sky-200 dark:border-slate-700 px-3 py-2 transition-all focus-within:border-sky-400 dark:focus-within:border-sky-500 focus-within:ring-2 focus-within:ring-sky-100 dark:focus-within:ring-sky-900/40">
+                  <span className="font-ui text-sm text-slate-400 dark:text-slate-500">
+                    $
+                  </span>
                   <input
                     type="text"
                     inputMode="decimal"
@@ -1993,13 +2000,13 @@ export default function DashboardPage() {
                       setAddForm((f) => ({ ...f, price: e.target.value }))
                     }
                     onKeyDown={handlePriceKeyDown}
-                    className="w-full bg-transparent font-ui text-sm text-slate-700 outline-none"
+                    className="w-full bg-transparent font-ui text-sm text-slate-700 dark:text-slate-200 outline-none"
                     placeholder="0.00"
                   />
                 </div>
               </div>
               <div>
-                <p className="font-ui text-xs uppercase tracking-widest text-slate-400">
+                <p className="font-ui text-xs uppercase tracking-widest text-slate-400 dark:text-slate-500">
                   Link
                 </p>
                 <input
@@ -2014,21 +2021,21 @@ export default function DashboardPage() {
                     setAddLinkError(!!v && !isValidLink(v));
                   }}
                   className={cn(
-                    "mt-1 w-full rounded-xl border px-3 py-2 font-ui text-sm text-sky-500 outline-none transition-all",
+                    "mt-1 w-full rounded-xl border px-3 py-2 font-ui text-sm text-sky-500 dark:text-sky-400 outline-none transition-all",
                     addLinkError
-                      ? "border-red-300 focus:border-red-400 focus:ring-2 focus:ring-red-100"
-                      : "border-sky-200 focus:border-sky-400 focus:ring-2 focus:ring-sky-100",
+                      ? "border-red-300 dark:border-red-800 focus:border-red-400 dark:focus:border-red-500 focus:ring-2 focus:ring-red-100 dark:focus:ring-red-900/40"
+                      : "border-sky-200 dark:border-slate-700 focus:border-sky-400 dark:focus:border-sky-500 focus:ring-2 focus:ring-sky-100 dark:focus:ring-sky-900/40",
                   )}
                   placeholder="amazon.com"
                 />
                 {addLinkError && (
-                  <p className="mt-1 font-ui text-xs text-red-400">
+                  <p className="mt-1 font-ui text-xs text-red-400 dark:text-red-300">
                     Please enter a valid URL (e.g. amazon.com)
                   </p>
                 )}
               </div>
               <div>
-                <p className="font-ui text-xs uppercase tracking-widest text-slate-400">
+                <p className="font-ui text-xs uppercase tracking-widest text-slate-400 dark:text-slate-500">
                   Category
                 </p>
                 <div className="relative mt-1">
@@ -2052,11 +2059,13 @@ export default function DashboardPage() {
                       setAddCatCreating(false);
                       setAddCatNewLabel("");
                     }}
-                    className="flex w-full items-center justify-between rounded-xl border border-sky-200 px-3 py-2 font-ui text-sm transition-all hover:border-sky-300 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100"
+                    className="flex w-full items-center justify-between rounded-xl border border-sky-200 dark:border-slate-700 px-3 py-2 font-ui text-sm transition-all hover:border-sky-300 dark:hover:border-slate-600 focus:border-sky-400 dark:focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100 dark:focus:ring-sky-900/40"
                   >
                     <span
                       className={
-                        addForm.category ? "text-slate-700" : "text-slate-400"
+                        addForm.category
+                          ? "text-slate-700 dark:text-slate-200"
+                          : "text-slate-400 dark:text-slate-500"
                       }
                     >
                       {addForm.category
@@ -2071,7 +2080,7 @@ export default function DashboardPage() {
                     />
                   </button>
                   {addCatOpen && (
-                    <div className="absolute z-10 mt-1 w-full rounded-xl border border-sky-200 bg-white shadow-lg">
+                    <div className="absolute z-10 mt-1 w-full rounded-xl border border-sky-200 dark:border-slate-700 bg-white dark:bg-blue-950 shadow-lg">
                       <div className="p-1.5">
                         <input
                           type="text"
@@ -2084,7 +2093,7 @@ export default function DashboardPage() {
                             }
                           }}
                           placeholder="Search category…"
-                          className="w-full rounded-lg border border-sky-100 px-2.5 py-1.5 font-ui text-sm text-slate-700 outline-none focus:border-sky-300"
+                          className="w-full rounded-lg border border-sky-100 dark:border-slate-800 px-2.5 py-1.5 font-ui text-sm text-slate-700 dark:text-slate-200 outline-none focus:border-sky-300 dark:focus:border-sky-600"
                           ref={addCatInputRef}
                         />
                       </div>
@@ -2093,15 +2102,15 @@ export default function DashboardPage() {
                           type="button"
                           onMouseDown={(e) => e.preventDefault()}
                           onClick={() => setAddCatCreating(true)}
-                          className="flex w-full items-center gap-1.5 border-b border-sky-50 px-3 py-2 text-left font-ui text-sm text-sky-500 transition-colors hover:bg-sky-50"
+                          className="flex w-full items-center gap-1.5 border-b border-sky-50 dark:border-slate-800 px-3 py-2 text-left font-ui text-sm text-sky-500 dark:text-sky-400 transition-colors hover:bg-sky-50 dark:hover:bg-slate-800"
                         >
                           <PlusIcon />
                           New category
                         </button>
                         {addCatCreating && (
-                          <div className="border-b border-sky-50 p-1.5">
+                          <div className="border-b border-sky-50 dark:border-slate-800 p-1.5">
                             {addCatNewLabel.length >= 30 && (
-                              <p className="mb-1 font-ui text-xs text-red-500">
+                              <p className="mb-1 font-ui text-xs text-red-500 dark:text-red-400">
                                 The 30 character limit has been reached.
                               </p>
                             )}
@@ -2140,7 +2149,7 @@ export default function DashboardPage() {
                                 setAddCatNewLabel("");
                               }}
                               placeholder="New category name"
-                              className="w-full rounded-lg border border-sky-200 px-2.5 py-1.5 font-ui text-sm text-slate-700 outline-none focus:border-sky-300"
+                              className="w-full rounded-lg border border-sky-200 dark:border-slate-700 px-2.5 py-1.5 font-ui text-sm text-slate-700 dark:text-slate-200 outline-none focus:border-sky-300 dark:focus:border-sky-600"
                             />
                           </div>
                         )}
@@ -2167,10 +2176,10 @@ export default function DashboardPage() {
                                 setAddCatSearch("");
                               }}
                               className={cn(
-                                "w-full px-3 py-2 text-left font-ui text-sm transition-colors hover:bg-sky-50",
+                                "w-full px-3 py-2 text-left font-ui text-sm transition-colors hover:bg-sky-50 dark:hover:bg-slate-800",
                                 addForm.category === c.id
-                                  ? "text-sky-600"
-                                  : "text-slate-700",
+                                  ? "text-sky-600 dark:text-sky-400"
+                                  : "text-slate-700 dark:text-slate-200",
                               )}
                             >
                               {c.label}
@@ -2186,7 +2195,7 @@ export default function DashboardPage() {
               <button
                 type="button"
                 onClick={closeAddModal}
-                className="flex-1 rounded-xl border border-slate-200 py-2.5 font-display tracking-wide text-slate-500 transition-colors hover:bg-slate-50"
+                className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 py-2.5 font-display tracking-wide text-slate-500 dark:text-slate-400 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800"
               >
                 Cancel
               </button>
@@ -2199,7 +2208,7 @@ export default function DashboardPage() {
                   !userId ||
                   addLinkError
                 }
-                className="flex-1 rounded-xl border border-sky-200 bg-sky-50 py-2.5 font-display tracking-wide text-sky-600 transition-colors hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex-1 rounded-xl border border-sky-200 dark:border-slate-700 bg-sky-50 dark:bg-slate-800 py-2.5 font-display tracking-wide text-sky-600 dark:text-sky-400 transition-colors hover:bg-sky-100 dark:hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Add
               </button>
@@ -2209,24 +2218,24 @@ export default function DashboardPage() {
       )}
 
       {showEmailModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 dark:bg-black/40 backdrop-blur-sm">
           <button
             type="button"
             aria-label="Close add from email"
             onClick={closeEmailModal}
             className="absolute inset-0 cursor-default"
           />
-          <div className="relative z-10 flex w-full max-w-lg flex-col gap-4 rounded-2xl border border-sky-100 bg-white p-6 shadow-lg">
+          <div className="relative z-10 flex w-full max-w-lg flex-col gap-4 rounded-2xl border border-sky-100 dark:border-slate-800 bg-white dark:bg-blue-950 p-6 shadow-lg">
             <div>
-              <h2 className="font-display text-2xl tracking-wide text-slate-800">
+              <h2 className="font-display text-2xl tracking-wide text-slate-800 dark:text-slate-100">
                 Add from email
               </h2>
-              <p className="mt-1 font-ui text-sm text-slate-400">
+              <p className="mt-1 font-ui text-sm text-slate-400 dark:text-slate-500">
                 Paste the full text of an order confirmation email below. AI
                 will pull out the item, price, and store, and add it to your
                 collection.
               </p>
-              <p className="mt-2 font-ui text-xs text-slate-400">
+              <p className="mt-2 font-ui text-xs text-slate-400 dark:text-slate-500">
                 Tip: paste &ldquo;Show original&rdquo; instead of the visible
                 email to also get a product photo and link. In Gmail, open the
                 actual email itself (not an order-tracking summary card) — the
@@ -2243,24 +2252,26 @@ export default function DashboardPage() {
                 placeholder="From: orders@store.com&#10;Subject: Your order has shipped&#10;&#10;Thanks for your order..."
                 rows={10}
                 disabled={emailPasteLoading}
-                className="w-full resize-none rounded-xl border border-sky-100 bg-white px-4 py-3 pr-16 font-ui text-sm text-slate-700 shadow-sm outline-none placeholder:text-slate-300 focus:border-sky-300 focus:ring-2 focus:ring-sky-100 transition-all disabled:opacity-60"
+                className="w-full resize-none rounded-xl border border-sky-100 dark:border-slate-800 bg-white dark:bg-blue-950 px-4 py-3 pr-16 font-ui text-sm text-slate-700 dark:text-slate-200 shadow-sm outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600 focus:border-sky-300 dark:focus:border-sky-600 focus:ring-2 focus:ring-sky-100 dark:focus:ring-sky-900/40 transition-all disabled:opacity-60"
               />
               {emailPasteText && !emailPasteLoading && (
                 <button
                   type="button"
                   onClick={() => setEmailPasteText("")}
-                  className="absolute right-3 top-3 rounded-full bg-slate-100 px-2 py-1 font-ui text-xs font-medium text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-600"
+                  className="absolute right-3 top-3 rounded-full bg-slate-100 dark:bg-slate-700 px-2 py-1 font-ui text-xs font-medium text-slate-500 dark:text-slate-400 transition-colors hover:bg-slate-200 dark:hover:bg-slate-600 hover:text-slate-600 dark:hover:text-slate-300"
                 >
                   Clear
                 </button>
               )}
             </div>
             {emailPasteError && (
-              <p className="font-ui text-sm text-red-500">{emailPasteError}</p>
+              <p className="font-ui text-sm text-red-500 dark:text-red-400">
+                {emailPasteError}
+              </p>
             )}
             {emailPasteResult && (
               <div className="flex items-center justify-between gap-2">
-                <p className="font-ui text-sm text-sky-600">
+                <p className="font-ui text-sm text-sky-600 dark:text-sky-400">
                   {emailPasteResult}
                 </p>
                 {emailPasteAddedIds.length > 0 && (
@@ -2268,7 +2279,7 @@ export default function DashboardPage() {
                     type="button"
                     onClick={handleUndoEmailPaste}
                     disabled={emailPasteUndoing}
-                    className="shrink-0 font-ui text-sm font-medium text-red-500 underline decoration-dotted underline-offset-2 transition-colors hover:text-red-600 disabled:opacity-50"
+                    className="shrink-0 font-ui text-sm font-medium text-red-500 dark:text-red-400 underline decoration-dotted underline-offset-2 transition-colors hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50"
                   >
                     {emailPasteUndoing ? "Undoing…" : "Undo"}
                   </button>
@@ -2279,7 +2290,7 @@ export default function DashboardPage() {
               <button
                 type="button"
                 onClick={closeEmailModal}
-                className="flex-1 rounded-xl border border-slate-200 bg-slate-50 py-2.5 font-display tracking-wide text-slate-500 transition-colors hover:bg-slate-100"
+                className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 py-2.5 font-display tracking-wide text-slate-500 dark:text-slate-400 transition-colors hover:bg-slate-100 dark:hover:bg-slate-600"
               >
                 Close
               </button>
@@ -2287,7 +2298,7 @@ export default function DashboardPage() {
                 type="button"
                 onClick={handleEmailPasteSubmit}
                 disabled={!emailPasteText.trim() || emailPasteLoading}
-                className="flex-1 rounded-xl border border-sky-200 bg-sky-50 py-2.5 font-display tracking-wide text-sky-600 transition-colors hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex-1 rounded-xl border border-sky-200 dark:border-slate-700 bg-sky-50 dark:bg-slate-800 py-2.5 font-display tracking-wide text-sky-600 dark:text-sky-400 transition-colors hover:bg-sky-100 dark:hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {emailPasteLoading ? "Reading…" : "Extract items"}
               </button>
@@ -2297,17 +2308,17 @@ export default function DashboardPage() {
       )}
 
       {viewItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 dark:bg-black/40 backdrop-blur-sm">
           <button
             type="button"
             aria-label="Close item details"
             className="fixed inset-0 cursor-default"
             onClick={closeViewItem}
           />
-          <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+          <div className="relative w-full max-w-sm rounded-2xl bg-white dark:bg-blue-950 p-6 shadow-xl">
             {isEditing && viewItemId ? (
               <input
-                className="mb-1 w-full bg-transparent font-display text-2xl tracking-wide text-slate-800 outline-none border-b border-sky-200 focus:border-sky-400 pb-1"
+                className="mb-1 w-full bg-transparent font-display text-2xl tracking-wide text-slate-800 dark:text-slate-100 outline-none border-b border-sky-200 dark:border-slate-700 focus:border-sky-400 dark:focus:border-sky-500 pb-1"
                 defaultValue={viewItem.name}
                 onBlur={(e) => {
                   const v = e.target.value;
@@ -2326,7 +2337,7 @@ export default function DashboardPage() {
                 }}
               />
             ) : (
-              <h2 className="mb-1 font-display text-2xl tracking-wide text-slate-800">
+              <h2 className="mb-1 font-display text-2xl tracking-wide text-slate-800 dark:text-slate-100">
                 {viewItem.name}
               </h2>
             )}
@@ -2335,7 +2346,7 @@ export default function DashboardPage() {
                 <button
                   type="button"
                   onClick={() => setCategoryMenuOpen((o) => !o)}
-                  className="flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-1 font-ui text-xs uppercase tracking-widest text-sky-600 transition-colors hover:bg-sky-100"
+                  className="flex items-center gap-1 rounded-full bg-sky-50 dark:bg-slate-800 px-2.5 py-1 font-ui text-xs uppercase tracking-widest text-sky-600 dark:text-sky-400 transition-colors hover:bg-sky-100 dark:hover:bg-slate-600"
                 >
                   {categories.find((c) => c.id === viewItem.category)?.label ??
                     "Select a category"}
@@ -2351,7 +2362,7 @@ export default function DashboardPage() {
                       className="fixed inset-0 z-[9] cursor-default"
                       onClick={() => setCategoryMenuOpen(false)}
                     />
-                    <div className="absolute z-20 mt-1 max-h-40 w-48 overflow-y-auto rounded-xl border border-sky-200 bg-white p-1 shadow-lg">
+                    <div className="absolute z-20 mt-1 max-h-40 w-48 overflow-y-auto rounded-xl border border-sky-200 dark:border-slate-700 bg-white dark:bg-blue-950 p-1 shadow-lg">
                       {categories
                         .filter((c) => c.id !== "all")
                         .map((c) => (
@@ -2360,10 +2371,10 @@ export default function DashboardPage() {
                             type="button"
                             onClick={() => handleViewCategoryChange(c.id)}
                             className={cn(
-                              "w-full rounded-lg px-3 py-2 text-left font-ui text-sm transition-colors hover:bg-sky-50",
+                              "w-full rounded-lg px-3 py-2 text-left font-ui text-sm transition-colors hover:bg-sky-50 dark:hover:bg-slate-800",
                               viewItem.category === c.id
-                                ? "text-sky-600"
-                                : "text-slate-700",
+                                ? "text-sky-600 dark:text-sky-400"
+                                : "text-slate-700 dark:text-slate-200",
                             )}
                           >
                             {c.label}
@@ -2375,7 +2386,7 @@ export default function DashboardPage() {
               </div>
             ) : (
               viewItem.category && (
-                <p className="mb-4 font-ui text-xs uppercase tracking-widest text-slate-400">
+                <p className="mb-4 font-ui text-xs uppercase tracking-widest text-slate-400 dark:text-slate-500">
                   {categories.find((c) => c.id === viewItem.category)?.label ??
                     viewItem.category}
                 </p>
@@ -2386,11 +2397,13 @@ export default function DashboardPage() {
                 "relative flex aspect-square items-center justify-center overflow-hidden rounded-xl",
                 viewItem.gradient
                   ? `bg-gradient-to-br ${viewItem.gradient}`
-                  : "bg-sky-50",
+                  : "bg-sky-50 dark:bg-slate-800",
               )}
             >
               {uploadingPhoto ? (
-                <p className="font-ui text-sm text-slate-400">Uploading…</p>
+                <p className="font-ui text-sm text-slate-400 dark:text-slate-500">
+                  Uploading…
+                </p>
               ) : viewItem.photoUrl ? (
                 // biome-ignore lint/performance/noImgElement: photoUrl can be an arbitrary external URL
                 <img
@@ -2399,7 +2412,7 @@ export default function DashboardPage() {
                   className="h-full w-full object-contain"
                 />
               ) : (
-                <span className="text-8xl text-slate-300">
+                <span className="text-8xl text-slate-300 dark:text-slate-600">
                   {viewItem.emoji ?? "📦"}
                 </span>
               )}
@@ -2409,7 +2422,7 @@ export default function DashboardPage() {
                   <button
                     type="button"
                     onClick={() => setPhotoMenuOpen((o) => !o)}
-                    className="absolute bottom-2 right-2 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-500 shadow-md transition-colors hover:bg-sky-50 hover:text-sky-600"
+                    className="absolute bottom-2 right-2 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white dark:bg-blue-950 text-slate-500 dark:text-slate-400 shadow-md transition-colors hover:bg-sky-50 dark:hover:bg-slate-800 hover:text-sky-600 dark:hover:text-sky-400"
                     aria-label="Edit photo"
                   >
                     <PencilIcon />
@@ -2427,7 +2440,7 @@ export default function DashboardPage() {
                           setEmojiPickerOpen(false);
                         }}
                       />
-                      <div className="absolute bottom-14 right-2 z-20 w-48 rounded-xl border border-sky-200 bg-white p-1.5 shadow-lg">
+                      <div className="absolute bottom-14 right-2 z-20 w-48 rounded-xl border border-sky-200 dark:border-slate-700 bg-white dark:bg-blue-950 p-1.5 shadow-lg">
                         {photoUrlInputOpen ? (
                           <div className="p-1.5">
                             <input
@@ -2447,14 +2460,14 @@ export default function DashboardPage() {
                               }}
                               placeholder="https://example.com/photo.jpg"
                               className={cn(
-                                "w-full rounded-lg border px-2.5 py-1.5 font-ui text-sm text-slate-700 outline-none",
+                                "w-full rounded-lg border px-2.5 py-1.5 font-ui text-sm text-slate-700 dark:text-slate-200 outline-none",
                                 photoUrlError
-                                  ? "border-red-300 focus:border-red-400"
-                                  : "border-sky-200 focus:border-sky-300",
+                                  ? "border-red-300 dark:border-red-800 focus:border-red-400 dark:focus:border-red-500"
+                                  : "border-sky-200 dark:border-slate-700 focus:border-sky-300 dark:focus:border-sky-600",
                               )}
                             />
                             {photoUrlError && (
-                              <p className="mt-1 font-ui text-xs text-red-400">
+                              <p className="mt-1 font-ui text-xs text-red-400 dark:text-red-300">
                                 Please enter a valid image URL
                               </p>
                             )}
@@ -2462,7 +2475,7 @@ export default function DashboardPage() {
                               type="button"
                               onClick={handlePhotoUrlSave}
                               disabled={photoUrlChecking}
-                              className="mt-1.5 w-full rounded-lg bg-sky-50 py-1.5 font-ui text-sm text-sky-600 transition-colors hover:bg-sky-100 disabled:opacity-60"
+                              className="mt-1.5 w-full rounded-lg bg-sky-50 dark:bg-slate-800 py-1.5 font-ui text-sm text-sky-600 dark:text-sky-400 transition-colors hover:bg-sky-100 dark:hover:bg-slate-600 disabled:opacity-60"
                             >
                               {photoUrlChecking ? "Checking…" : "Save"}
                             </button>
@@ -2474,7 +2487,7 @@ export default function DashboardPage() {
                                 key={emoji}
                                 type="button"
                                 onClick={() => handleChooseEmoji(emoji)}
-                                className="flex h-8 w-8 items-center justify-center rounded-lg text-xl transition-colors hover:bg-sky-50"
+                                className="flex h-8 w-8 items-center justify-center rounded-lg text-xl transition-colors hover:bg-sky-50 dark:hover:bg-slate-800"
                               >
                                 {emoji}
                               </button>
@@ -2485,14 +2498,14 @@ export default function DashboardPage() {
                             <button
                               type="button"
                               onClick={() => setPhotoUrlInputOpen(true)}
-                              className="rounded-lg px-3 py-2 text-left font-ui text-sm text-slate-700 transition-colors hover:bg-sky-50"
+                              className="rounded-lg px-3 py-2 text-left font-ui text-sm text-slate-700 dark:text-slate-200 transition-colors hover:bg-sky-50 dark:hover:bg-slate-800"
                             >
                               Paste image URL
                             </button>
                             <button
                               type="button"
                               onClick={() => uploadInputRef.current?.click()}
-                              className="rounded-lg px-3 py-2 text-left font-ui text-sm text-slate-700 transition-colors hover:bg-sky-50"
+                              className="rounded-lg px-3 py-2 text-left font-ui text-sm text-slate-700 dark:text-slate-200 transition-colors hover:bg-sky-50 dark:hover:bg-slate-800"
                             >
                               Upload from device
                             </button>
@@ -2500,7 +2513,7 @@ export default function DashboardPage() {
                               <button
                                 type="button"
                                 onClick={() => cameraInputRef.current?.click()}
-                                className="rounded-lg px-3 py-2 text-left font-ui text-sm text-slate-700 transition-colors hover:bg-sky-50"
+                                className="rounded-lg px-3 py-2 text-left font-ui text-sm text-slate-700 dark:text-slate-200 transition-colors hover:bg-sky-50 dark:hover:bg-slate-800"
                               >
                                 Take a photo
                               </button>
@@ -2508,7 +2521,7 @@ export default function DashboardPage() {
                             <button
                               type="button"
                               onClick={() => setEmojiPickerOpen(true)}
-                              className="rounded-lg px-3 py-2 text-left font-ui text-sm text-slate-700 transition-colors hover:bg-sky-50"
+                              className="rounded-lg px-3 py-2 text-left font-ui text-sm text-slate-700 dark:text-slate-200 transition-colors hover:bg-sky-50 dark:hover:bg-slate-800"
                             >
                               Choose an emoji
                             </button>
@@ -2516,7 +2529,7 @@ export default function DashboardPage() {
                               <button
                                 type="button"
                                 onClick={handleRemovePhoto}
-                                className="rounded-lg px-3 py-2 text-left font-ui text-sm text-red-500 transition-colors hover:bg-red-50"
+                                className="rounded-lg px-3 py-2 text-left font-ui text-sm text-red-500 dark:text-red-400 transition-colors hover:bg-red-50 dark:hover:bg-red-950/40"
                               >
                                 Remove photo
                               </button>
@@ -2554,13 +2567,13 @@ export default function DashboardPage() {
             {isEditing && viewItemId ? (
               <div className="mt-4 flex flex-col gap-1">
                 <div className="flex items-center gap-0.5">
-                  <span className="font-ui text-2xl font-semibold text-slate-700">
+                  <span className="font-ui text-2xl font-semibold text-slate-700 dark:text-slate-200">
                     $
                   </span>
                   <input
                     type="text"
                     inputMode="decimal"
-                    className="w-full bg-transparent font-ui text-2xl font-semibold text-slate-700 outline-none border-b border-sky-200 focus:border-sky-400 pb-0.5"
+                    className="w-full bg-transparent font-ui text-2xl font-semibold text-slate-700 dark:text-slate-200 outline-none border-b border-sky-200 dark:border-slate-700 focus:border-sky-400 dark:focus:border-sky-500 pb-0.5"
                     defaultValue={viewItem.price.toFixed(2)}
                     onKeyDown={handlePriceKeyDown}
                     onBlur={(e) => {
@@ -2584,10 +2597,10 @@ export default function DashboardPage() {
                 </div>
                 <input
                   className={cn(
-                    "w-full bg-transparent font-ui text-sm text-sky-400 outline-none border-b pb-0.5",
+                    "w-full bg-transparent font-ui text-sm text-sky-400 dark:text-sky-300 outline-none border-b pb-0.5",
                     linkErrorId === viewItemId
-                      ? "border-red-400 focus:border-red-400"
-                      : "border-sky-200 focus:border-sky-400",
+                      ? "border-red-400 dark:border-red-700 focus:border-red-400 dark:focus:border-red-500"
+                      : "border-sky-200 dark:border-slate-700 focus:border-sky-400 dark:focus:border-sky-500",
                   )}
                   placeholder="Website URL"
                   defaultValue={viewItem.link ?? ""}
@@ -2617,14 +2630,14 @@ export default function DashboardPage() {
                   }}
                 />
                 {linkErrorId === viewItemId && (
-                  <p className="mt-0.5 font-ui text-xs text-red-400">
+                  <p className="mt-0.5 font-ui text-xs text-red-400 dark:text-red-300">
                     Invalid URL
                   </p>
                 )}
               </div>
             ) : (
               <div className="mt-4 flex items-center justify-between">
-                <p className="font-ui text-2xl font-semibold text-slate-700">
+                <p className="font-ui text-2xl font-semibold text-slate-700 dark:text-slate-200">
                   ${viewItem.price.toFixed(2)}
                 </p>
                 {viewItem.link && (
@@ -2636,7 +2649,7 @@ export default function DashboardPage() {
                     }
                     target="_blank"
                     rel="noreferrer"
-                    className="flex min-w-0 items-center gap-1 font-ui text-sm text-sky-400 transition-colors hover:text-sky-500"
+                    className="flex min-w-0 items-center gap-1 font-ui text-sm text-sky-400 dark:text-sky-300 transition-colors hover:text-sky-500 dark:hover:text-sky-400"
                   >
                     <span className="truncate">
                       {linkHostname(viewItem.link)}
@@ -2649,7 +2662,7 @@ export default function DashboardPage() {
             <button
               type="button"
               onClick={closeViewItem}
-              className="mt-5 w-full rounded-xl border border-slate-200 py-2.5 font-display tracking-wide text-slate-500 transition-colors hover:bg-slate-50"
+              className="mt-5 w-full rounded-xl border border-slate-200 dark:border-slate-700 py-2.5 font-display tracking-wide text-slate-500 dark:text-slate-400 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800"
             >
               Close
             </button>

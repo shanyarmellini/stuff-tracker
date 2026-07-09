@@ -100,63 +100,67 @@ export default function EmailsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-sky-50/40 px-8 py-8">
+    <div className="min-h-screen bg-sky-50/40 dark:bg-slate-950 px-8 py-8">
       <div className="mx-auto max-w-2xl">
         <Link
           href="/dashboard"
-          className="mb-6 inline-flex items-center gap-1.5 font-ui text-sm text-slate-500 transition-colors hover:text-sky-600"
+          className="mb-6 inline-flex items-center gap-1.5 font-ui text-sm text-slate-500 dark:text-slate-400 transition-colors hover:text-sky-600 dark:hover:text-sky-400"
         >
           <BackIcon />
           Back to My Items
         </Link>
 
-        <h1 className="mb-1 font-display text-4xl tracking-wide text-slate-800">
+        <h1 className="mb-1 font-display text-4xl tracking-wide text-slate-800 dark:text-slate-100">
           Emails
         </h1>
-        <p className="mb-6 font-ui text-sm text-slate-400">
+        <p className="mb-6 font-ui text-sm text-slate-400 dark:text-slate-500">
           {connected && email
             ? `Emails Stuff Tracker can access from ${email}`
             : "Connect an account to see the emails Stuff Tracker has access to."}
         </p>
 
         {error && (
-          <p className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 font-ui text-sm text-red-500">
+          <p className="mb-4 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 p-3 font-ui text-sm text-red-500 dark:text-red-400">
             {error}
           </p>
         )}
 
         {loading ? (
-          <p className="font-ui text-sm text-slate-400">Loading…</p>
+          <p className="font-ui text-sm text-slate-400 dark:text-slate-500">
+            Loading…
+          </p>
         ) : !connected ? (
-          <div className="flex flex-col items-start gap-3 rounded-2xl border border-sky-100 bg-white p-6 shadow-sm">
-            <p className="font-ui text-sm text-slate-500">
+          <div className="flex flex-col items-start gap-3 rounded-2xl border border-sky-100 dark:border-slate-800 bg-white dark:bg-blue-950 p-6 shadow-sm">
+            <p className="font-ui text-sm text-slate-500 dark:text-slate-400">
               Connect your Gmail to see the emails Stuff Tracker has access to
               here.
             </p>
             <a
               href="/api/google/connect"
-              className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-2 font-ui text-sm text-sky-600 transition-colors hover:bg-sky-100"
+              className="rounded-lg border border-sky-200 dark:border-slate-700 bg-sky-50 dark:bg-slate-800 px-4 py-2 font-ui text-sm text-sky-600 dark:text-sky-400 transition-colors hover:bg-sky-100 dark:hover:bg-slate-600"
             >
               Connect Gmail
             </a>
           </div>
         ) : (
           <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between gap-2 rounded-2xl border border-sky-100 bg-white p-4 shadow-sm">
-              <p className="truncate font-ui text-sm text-slate-500">{email}</p>
+            <div className="flex items-center justify-between gap-2 rounded-2xl border border-sky-100 dark:border-slate-800 bg-white dark:bg-blue-950 p-4 shadow-sm">
+              <p className="truncate font-ui text-sm text-slate-500 dark:text-slate-400">
+                {email}
+              </p>
               <button
                 type="button"
                 onClick={handleDisconnect}
                 disabled={disconnecting}
-                className="shrink-0 font-ui text-sm text-red-500 transition-colors hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                className="shrink-0 font-ui text-sm text-red-500 dark:text-red-400 transition-colors hover:text-red-600 dark:hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {disconnecting ? "Disconnecting…" : "Disconnect"}
               </button>
             </div>
 
             {messages.length === 0 ? (
-              <div className="flex h-32 items-center justify-center rounded-2xl border border-dashed border-sky-200 bg-white">
-                <p className="font-ui text-sm text-slate-400">
+              <div className="flex h-32 items-center justify-center rounded-2xl border border-dashed border-sky-200 dark:border-slate-700 bg-white dark:bg-blue-950">
+                <p className="font-ui text-sm text-slate-400 dark:text-slate-500">
                   No emails found.
                 </p>
               </div>
@@ -165,22 +169,22 @@ export default function EmailsPage() {
                 {messages.map((message) => (
                   <li
                     key={message.id}
-                    className="rounded-xl border border-sky-100 bg-white p-3 shadow-sm"
+                    className="rounded-xl border border-sky-100 dark:border-slate-800 bg-white dark:bg-blue-950 p-3 shadow-sm"
                   >
                     <div className="flex items-baseline justify-between gap-2">
-                      <p className="truncate font-ui text-sm font-semibold text-slate-700">
+                      <p className="truncate font-ui text-sm font-semibold text-slate-700 dark:text-slate-200">
                         {message.subject || "(no subject)"}
                       </p>
                       {message.date && (
-                        <p className="shrink-0 font-ui text-xs text-slate-400">
+                        <p className="shrink-0 font-ui text-xs text-slate-400 dark:text-slate-500">
                           {message.date}
                         </p>
                       )}
                     </div>
-                    <p className="truncate font-ui text-xs text-slate-400">
+                    <p className="truncate font-ui text-xs text-slate-400 dark:text-slate-500">
                       {message.from}
                     </p>
-                    <p className="line-clamp-2 font-ui text-xs text-slate-400">
+                    <p className="line-clamp-2 font-ui text-xs text-slate-400 dark:text-slate-500">
                       {message.snippet}
                     </p>
                   </li>
@@ -193,7 +197,7 @@ export default function EmailsPage() {
                 type="button"
                 onClick={() => fetchEmails(nextPageToken)}
                 disabled={loadingMore}
-                className="self-center rounded-lg border border-sky-200 bg-white px-4 py-2 font-ui text-sm text-sky-600 shadow-sm transition-colors hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50"
+                className="self-center rounded-lg border border-sky-200 dark:border-slate-700 bg-white dark:bg-blue-950 px-4 py-2 font-ui text-sm text-sky-600 dark:text-sky-400 shadow-sm transition-colors hover:bg-sky-50 dark:hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {loadingMore ? "Loading…" : "Load more"}
               </button>
