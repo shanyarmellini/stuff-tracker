@@ -519,6 +519,13 @@ export default function DashboardPage() {
   const [newCatInput, setNewCatInput] = useState("");
   const [linkErrorId, setLinkErrorId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailPasteText, setEmailPasteText] = useState("");
+  const [emailPasteLoading, setEmailPasteLoading] = useState(false);
+  const [emailPasteError, setEmailPasteError] = useState<string | null>(null);
+  const [emailPasteResult, setEmailPasteResult] = useState<string | null>(null);
+  const [emailPasteAddedIds, setEmailPasteAddedIds] = useState<string[]>([]);
+  const [emailPasteUndoing, setEmailPasteUndoing] = useState(false);
   const [viewItem, setViewItem] = useState<ViewItem | null>(null);
   const [photoMenuOpen, setPhotoMenuOpen] = useState(false);
   const [photoUrlInputOpen, setPhotoUrlInputOpen] = useState(false);
@@ -646,6 +653,28 @@ export default function DashboardPage() {
         setItemsLoaded(true);
       });
     });
+  }, [applyItemsAndCategories]);
+
+  const refreshItemsAndCategories = useCallback(async () => {
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+    const [{ data: profile }, { data: itemsData }] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("item_types")
+        .eq("user_id", user.id)
+        .single(),
+      supabase.from("items").select("*").order("sort_order", {
+        ascending: true,
+      }),
+    ]);
+    applyItemsAndCategories(
+      profile?.item_types ?? [],
+      (itemsData ?? []) as Item[],
+    );
   }, [applyItemsAndCategories]);
 
   const viewItemId = viewItem?.id ?? null;
@@ -1054,6 +1083,73 @@ export default function DashboardPage() {
     setAddEmojiPickerOpen(false);
   };
 
+  const closeEmailModal = () => {
+    setShowEmailModal(false);
+    setEmailPasteText("");
+    setEmailPasteLoading(false);
+    setEmailPasteError(null);
+    setEmailPasteResult(null);
+    setEmailPasteAddedIds([]);
+  };
+
+  const handleEmailPasteSubmit = async () => {
+    const text = emailPasteText.trim();
+    if (!text) return;
+    setEmailPasteLoading(true);
+    setEmailPasteError(null);
+    setEmailPasteResult(null);
+    setEmailPasteAddedIds([]);
+    try {
+      const res = await fetch("/api/manual-emails/extract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      const data: { added?: number; itemIds?: string[]; error?: string } =
+        await res.json();
+      if (!res.ok) {
+        setEmailPasteError(data.error ?? "Something went wrong.");
+        return;
+      }
+      const added = data.added ?? 0;
+      if (added === 0) {
+        setEmailPasteResult(
+          "No purchase was found in that email. Paste the order confirmation you got right after checkout (it should show a price) — not a shipping or delivery update, which won't have one.",
+        );
+      } else {
+        setEmailPasteResult(
+          `Added ${added} item${added === 1 ? "" : "s"} to your collection.`,
+        );
+        setEmailPasteAddedIds(data.itemIds ?? []);
+        setEmailPasteText("");
+        await refreshItemsAndCategories();
+      }
+    } catch {
+      setEmailPasteError("Something went wrong. Please try again.");
+    } finally {
+      setEmailPasteLoading(false);
+    }
+  };
+
+  const handleUndoEmailPaste = async () => {
+    if (emailPasteAddedIds.length === 0) return;
+    setEmailPasteUndoing(true);
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("items")
+      .delete()
+      .in("id", emailPasteAddedIds);
+    setEmailPasteUndoing(false);
+    if (error) {
+      console.error("Failed to undo added items:", error.message);
+      setEmailPasteError("Couldn't undo — please try again.");
+      return;
+    }
+    setEmailPasteAddedIds([]);
+    setEmailPasteResult("Removed those items from your collection.");
+    await refreshItemsAndCategories();
+  };
+
   const handleAddPhotoFile = async (file: File | undefined) => {
     if (!file || !userId) return;
     setAddPhotoMenuOpen(false);
@@ -1376,6 +1472,13 @@ export default function DashboardPage() {
             >
               Account
             </Link>
+            <button
+              type="button"
+              onClick={() => setShowEmailModal(true)}
+              className="rounded-lg border border-sky-200 dark:border-slate-700 bg-white dark:bg-blue-950 px-4 py-1.5 text-xs text-slate-500 dark:text-slate-400 font-ui transition-colors hover:bg-sky-50 dark:hover:bg-slate-800 hover:text-sky-600 dark:hover:text-sky-400"
+            >
+              Add from email
+            </button>
             <Link
               href="/dashboard/settings"
               className="flex items-center gap-1.5 rounded-lg border border-sky-200 dark:border-slate-700 bg-white dark:bg-blue-950 px-4 py-1.5 text-xs text-slate-500 dark:text-slate-400 font-ui transition-colors hover:bg-sky-50 dark:hover:bg-slate-800 hover:text-sky-600 dark:hover:text-sky-400"
@@ -2108,6 +2211,96 @@ export default function DashboardPage() {
                 className="flex-1 rounded-xl border border-sky-200 dark:border-slate-700 bg-sky-50 dark:bg-slate-800 py-2.5 font-display tracking-wide text-sky-600 dark:text-sky-400 transition-colors hover:bg-sky-100 dark:hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Add
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEmailModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 dark:bg-black/40 backdrop-blur-sm">
+          <button
+            type="button"
+            aria-label="Close add from email"
+            onClick={closeEmailModal}
+            className="absolute inset-0 cursor-default"
+          />
+          <div className="relative z-10 flex w-full max-w-lg flex-col gap-4 rounded-2xl border border-sky-100 dark:border-slate-800 bg-white dark:bg-blue-950 p-6 shadow-lg">
+            <div>
+              <h2 className="font-display text-2xl tracking-wide text-slate-800 dark:text-slate-100">
+                Add from email
+              </h2>
+              <p className="mt-1 font-ui text-sm text-slate-400 dark:text-slate-500">
+                Paste the full text of an order confirmation email below. AI
+                will pull out the item, price, and store, and add it to your
+                collection.
+              </p>
+              <p className="mt-2 font-ui text-xs text-slate-400 dark:text-slate-500">
+                Tip: paste &ldquo;Show original&rdquo; instead of the visible
+                email to also get a product photo and link. In Gmail, open the
+                actual email itself (not an order-tracking summary card) — the
+                &#8942; (more) menu you want is on the right side of that email,
+                a little below the top toolbar, next to reply/forward. Click it
+                and choose &ldquo;Show original,&rdquo; then paste that raw
+                source here instead of the rendered email text.
+              </p>
+            </div>
+            <div className="relative">
+              <textarea
+                value={emailPasteText}
+                onChange={(e) => setEmailPasteText(e.target.value)}
+                placeholder="From: orders@store.com&#10;Subject: Your order has shipped&#10;&#10;Thanks for your order..."
+                rows={10}
+                disabled={emailPasteLoading}
+                className="w-full resize-none rounded-xl border border-sky-100 dark:border-slate-800 bg-white dark:bg-blue-950 px-4 py-3 pr-16 font-ui text-sm text-slate-700 dark:text-slate-200 shadow-sm outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600 focus:border-sky-300 dark:focus:border-sky-600 focus:ring-2 focus:ring-sky-100 dark:focus:ring-sky-900/40 transition-all disabled:opacity-60"
+              />
+              {emailPasteText && !emailPasteLoading && (
+                <button
+                  type="button"
+                  onClick={() => setEmailPasteText("")}
+                  className="absolute right-3 top-3 rounded-full bg-slate-100 dark:bg-slate-700 px-2 py-1 font-ui text-xs font-medium text-slate-500 dark:text-slate-400 transition-colors hover:bg-slate-200 dark:hover:bg-slate-600 hover:text-slate-600 dark:hover:text-slate-300"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            {emailPasteError && (
+              <p className="font-ui text-sm text-red-500 dark:text-red-400">
+                {emailPasteError}
+              </p>
+            )}
+            {emailPasteResult && (
+              <div className="flex items-center justify-between gap-2">
+                <p className="font-ui text-sm text-sky-600 dark:text-sky-400">
+                  {emailPasteResult}
+                </p>
+                {emailPasteAddedIds.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleUndoEmailPaste}
+                    disabled={emailPasteUndoing}
+                    className="shrink-0 font-ui text-sm font-medium text-red-500 dark:text-red-400 underline decoration-dotted underline-offset-2 transition-colors hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50"
+                  >
+                    {emailPasteUndoing ? "Undoing…" : "Undo"}
+                  </button>
+                )}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={closeEmailModal}
+                className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 py-2.5 font-display tracking-wide text-slate-500 dark:text-slate-400 transition-colors hover:bg-slate-100 dark:hover:bg-slate-600"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={handleEmailPasteSubmit}
+                disabled={!emailPasteText.trim() || emailPasteLoading}
+                className="flex-1 rounded-xl border border-sky-200 dark:border-slate-700 bg-sky-50 dark:bg-slate-800 py-2.5 font-display tracking-wide text-sky-600 dark:text-sky-400 transition-colors hover:bg-sky-100 dark:hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {emailPasteLoading ? "Reading…" : "Extract items"}
               </button>
             </div>
           </div>
