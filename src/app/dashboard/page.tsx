@@ -276,6 +276,8 @@ function RedoIcon() {
   );
 }
 
+const EXTRACTION_LIMIT = 250;
+
 const PLACEHOLDER_ITEMS = [
   {
     id: "p1",
@@ -523,6 +525,13 @@ export default function DashboardPage() {
   const [emailPasteText, setEmailPasteText] = useState("");
   const [emailPasteLoading, setEmailPasteLoading] = useState(false);
   const [emailPasteError, setEmailPasteError] = useState<string | null>(null);
+  const [emailPasteLimitReached, setEmailPasteLimitReached] = useState(false);
+  const [emailPasteTruncationWarning, setEmailPasteTruncationWarning] =
+    useState<string | null>(null);
+  const [planInfo, setPlanInfo] = useState<{
+    isPro: boolean;
+    used: number;
+  } | null>(null);
   const [emailPasteResult, setEmailPasteResult] = useState<string | null>(null);
   const [emailPasteAddedIds, setEmailPasteAddedIds] = useState<string[]>([]);
   const [emailPasteUndoing, setEmailPasteUndoing] = useState(false);
@@ -581,6 +590,9 @@ export default function DashboardPage() {
   const addCatInputRef = useRef<HTMLInputElement>(null);
   const addCatNewLabelInputRef = useRef<HTMLInputElement>(null);
   const [itemsLoaded, setItemsLoaded] = useState(false);
+  const [brokenPhotoIds, setBrokenPhotoIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [displayedPlaceholders, setDisplayedPlaceholders] =
     useState(PLACEHOLDER_ITEMS);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
@@ -627,6 +639,32 @@ export default function DashboardPage() {
     [],
   );
 
+  const refreshPlanInfo = useCallback(async (userId: string) => {
+    const supabase = createClient();
+    const { data: subscription } = await supabase
+      .from("subscriptions")
+      .select("status, current_period_start")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const isPro =
+      subscription?.status === "active" || subscription?.status === "trialing";
+
+    let usageQuery = supabase
+      .from("extraction_usage")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId);
+    if (isPro && subscription?.current_period_start) {
+      usageQuery = usageQuery.gte(
+        "created_at",
+        subscription.current_period_start,
+      );
+    }
+    const { count } = await usageQuery;
+
+    setPlanInfo({ isPro, used: count ?? 0 });
+  }, []);
+
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data }) => {
@@ -652,8 +690,10 @@ export default function DashboardPage() {
         );
         setItemsLoaded(true);
       });
+
+      refreshPlanInfo(user.id);
     });
-  }, [applyItemsAndCategories]);
+  }, [applyItemsAndCategories, refreshPlanInfo]);
 
   const refreshItemsAndCategories = useCallback(async () => {
     const supabase = createClient();
@@ -1088,6 +1128,8 @@ export default function DashboardPage() {
     setEmailPasteText("");
     setEmailPasteLoading(false);
     setEmailPasteError(null);
+    setEmailPasteLimitReached(false);
+    setEmailPasteTruncationWarning(null);
     setEmailPasteResult(null);
     setEmailPasteAddedIds([]);
   };
@@ -1097,6 +1139,8 @@ export default function DashboardPage() {
     if (!text) return;
     setEmailPasteLoading(true);
     setEmailPasteError(null);
+    setEmailPasteLimitReached(false);
+    setEmailPasteTruncationWarning(null);
     setEmailPasteResult(null);
     setEmailPasteAddedIds([]);
     try {
@@ -1105,12 +1149,21 @@ export default function DashboardPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
       });
-      const data: { added?: number; itemIds?: string[]; error?: string } =
-        await res.json();
+      const data: {
+        added?: number;
+        itemIds?: string[];
+        error?: string;
+        limitReached?: boolean;
+        truncationWarning?: string | null;
+      } = await res.json();
       if (!res.ok) {
         setEmailPasteError(data.error ?? "Something went wrong.");
+        setEmailPasteLimitReached(Boolean(data.limitReached));
         return;
       }
+      if (userId) refreshPlanInfo(userId);
+      setEmailPasteTruncationWarning(data.truncationWarning ?? null);
+
       const added = data.added ?? 0;
       if (added === 0) {
         setEmailPasteResult(
@@ -1739,12 +1792,17 @@ export default function DashboardPage() {
                           </p>
 
                           <div className="relative my-2 flex-1 overflow-hidden rounded-xl bg-sky-50 dark:bg-slate-800">
-                            {item.photo_url ? (
+                            {item.photo_url && !brokenPhotoIds.has(item.id) ? (
                               // biome-ignore lint/performance/noImgElement: photo_url can be an arbitrary external URL
                               <img
                                 src={item.photo_url}
                                 alt={item.name}
                                 draggable={false}
+                                onError={() =>
+                                  setBrokenPhotoIds((prev) =>
+                                    new Set(prev).add(item.id),
+                                  )
+                                }
                                 className="h-full w-full object-contain"
                               />
                             ) : (
@@ -2226,10 +2284,19 @@ export default function DashboardPage() {
             className="absolute inset-0 cursor-default"
           />
           <div className="relative z-10 flex w-full max-w-lg flex-col gap-4 rounded-2xl border border-sky-100 dark:border-slate-800 bg-white dark:bg-blue-950 p-6 shadow-lg">
-            <div>
+            <div className="flex items-start justify-between gap-3">
               <h2 className="font-display text-2xl tracking-wide text-slate-800 dark:text-slate-100">
                 Add from email
               </h2>
+              {planInfo && (
+                <span className="shrink-0 rounded-full border border-sky-200 dark:border-slate-700 bg-sky-50 dark:bg-slate-800 px-3 py-1 font-ui text-xs font-medium text-sky-600 dark:text-sky-400">
+                  {planInfo.isPro ? "Pro" : "Free"} plan ·{" "}
+                  {Math.min(planInfo.used, EXTRACTION_LIMIT)}/{EXTRACTION_LIMIT}{" "}
+                  used
+                </span>
+              )}
+            </div>
+            <div className="-mt-4">
               <p className="mt-1 font-ui text-sm text-slate-400 dark:text-slate-500">
                 Paste the full text of an order confirmation email below. AI
                 will pull out the item, price, and store, and add it to your
@@ -2267,6 +2334,33 @@ export default function DashboardPage() {
             {emailPasteError && (
               <p className="font-ui text-sm text-red-500 dark:text-red-400">
                 {emailPasteError}
+                {emailPasteLimitReached && (
+                  <>
+                    {" "}
+                    <Link
+                      href="/dashboard/account"
+                      className="underline hover:text-red-600 dark:hover:text-red-300"
+                    >
+                      View plan
+                    </Link>
+                  </>
+                )}
+              </p>
+            )}
+            {emailPasteTruncationWarning && (
+              <p className="font-ui text-sm text-amber-600 dark:text-amber-400">
+                {emailPasteTruncationWarning}
+                {!planInfo?.isPro && (
+                  <>
+                    {" "}
+                    <Link
+                      href="/subscriptions"
+                      className="underline hover:text-amber-700 dark:hover:text-amber-300"
+                    >
+                      Upgrade
+                    </Link>
+                  </>
+                )}
               </p>
             )}
             {emailPasteResult && (
@@ -2404,11 +2498,16 @@ export default function DashboardPage() {
                 <p className="font-ui text-sm text-slate-400 dark:text-slate-500">
                   Uploading…
                 </p>
-              ) : viewItem.photoUrl ? (
+              ) : viewItem.photoUrl &&
+                (!viewItem.id || !brokenPhotoIds.has(viewItem.id)) ? (
                 // biome-ignore lint/performance/noImgElement: photoUrl can be an arbitrary external URL
                 <img
                   src={viewItem.photoUrl}
                   alt={viewItem.name}
+                  onError={() => {
+                    const id = viewItem.id;
+                    if (id) setBrokenPhotoIds((prev) => new Set(prev).add(id));
+                  }}
                   className="h-full w-full object-contain"
                 />
               ) : (

@@ -9,9 +9,40 @@ const LOOKS_LIKE_HTML = /<[a-z][\s\S]*>/i;
 
 const LINK_FORMAT = /^(https?:\/\/)?([^./\s]+\.)+[^./\s]{2,}(\/\S*)?$/i;
 
+const EXTRACTION_LIMIT = 250;
+const FREE_ITEMS_PER_EMAIL = 20;
+const PRO_ITEMS_PER_EMAIL = 40;
+
 function sanitizeLink(link: string | null): string | null {
   if (!link || !LINK_FORMAT.test(link.trim())) return null;
   return link.trim();
+}
+
+async function checkExtractionQuota(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+) {
+  const { data: subscription } = await supabase
+    .from("subscriptions")
+    .select("status, current_period_start")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  const isPro =
+    subscription?.status === "active" || subscription?.status === "trialing";
+
+  let query = supabase
+    .from("extraction_usage")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", userId);
+  if (isPro && subscription?.current_period_start) {
+    query = query.gte("created_at", subscription.current_period_start);
+  }
+
+  const { count } = await query;
+  const used = count ?? 0;
+
+  return { isPro, limited: used >= EXTRACTION_LIMIT, used };
 }
 
 export async function POST(request: Request) {
@@ -22,6 +53,20 @@ export async function POST(request: Request) {
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { isPro, limited } = await checkExtractionQuota(supabase, user.id);
+  if (limited) {
+    return NextResponse.json(
+      {
+        error: isPro
+          ? "You've used all your extractions for this billing period."
+          : "You've used all 250 free extractions. Upgrade to keep going.",
+        limitReached: true,
+        isPro,
+      },
+      { status: 403 },
+    );
   }
 
   const { text } = (await request.json()) as { text?: string };
@@ -56,17 +101,22 @@ export async function POST(request: Request) {
   const bodyText = isHtml ? stripHtml(source) : source;
   const imageUrl = isHtml ? extractFirstImageUrl(source) : null;
 
-  let extracted: Awaited<ReturnType<typeof extractPurchasesFromEmails>>;
+  const maxItemsPerEmail = isPro ? PRO_ITEMS_PER_EMAIL : FREE_ITEMS_PER_EMAIL;
+
+  let result: Awaited<ReturnType<typeof extractPurchasesFromEmails>>;
   try {
-    extracted = await extractPurchasesFromEmails([
-      {
-        id: crypto.randomUUID(),
-        from: "",
-        subject: "",
-        bodyText: bodyText.slice(0, 12000),
-        imageUrl,
-      },
-    ]);
+    result = await extractPurchasesFromEmails(
+      [
+        {
+          id: crypto.randomUUID(),
+          from: "",
+          subject: "",
+          bodyText: bodyText.slice(0, 12000),
+          imageUrl,
+        },
+      ],
+      maxItemsPerEmail,
+    );
   } catch (err) {
     if (err instanceof Anthropic.AuthenticationError) {
       console.error("Anthropic API key is missing or invalid:", err.message);
@@ -92,8 +142,17 @@ export async function POST(request: Request) {
     );
   }
 
+  await supabase.from("extraction_usage").insert({ user_id: user.id });
+
+  const { items: extracted, truncated } = result;
+  const truncationWarning = truncated
+    ? isPro
+      ? `This email had more items than we could extract — the Pro plan is capped at ${PRO_ITEMS_PER_EMAIL} items per email.`
+      : `This email had more items than we could extract — the free plan is capped at ${FREE_ITEMS_PER_EMAIL} items per email. Upgrade to Pro for a ${PRO_ITEMS_PER_EMAIL}-item limit.`
+    : null;
+
   if (extracted.length === 0) {
-    return NextResponse.json({ added: 0 });
+    return NextResponse.json({ added: 0, truncationWarning });
   }
 
   const existingTypes: string[] = profile?.item_types ?? [];
@@ -149,5 +208,6 @@ export async function POST(request: Request) {
   return NextResponse.json({
     added: inserted?.length ?? 0,
     itemIds: inserted?.map((row) => row.id) ?? [],
+    truncationWarning,
   });
 }

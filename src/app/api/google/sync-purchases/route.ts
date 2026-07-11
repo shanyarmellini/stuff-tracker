@@ -83,9 +83,10 @@ export async function POST() {
 
   const extracted = [];
   for (let i = 0; i < fresh.length; i += BATCH_SIZE) {
-    extracted.push(
-      ...(await extractPurchasesFromEmails(fresh.slice(i, i + BATCH_SIZE))),
+    const { items } = await extractPurchasesFromEmails(
+      fresh.slice(i, i + BATCH_SIZE),
     );
+    extracted.push(...items);
   }
 
   let added = 0;

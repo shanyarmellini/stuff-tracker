@@ -42,3 +42,7 @@ next-env.d.ts
 
 # supabase CLI local project link/cache
 /supabase/.temp
+
+# local dev tooling
+/__webhook-poller.mjs
+/.webhook-poller-state.json

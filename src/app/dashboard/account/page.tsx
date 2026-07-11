@@ -24,7 +24,7 @@ function BackIcon() {
   );
 }
 
-function formatDate(iso: string | undefined) {
+function formatDate(iso: string | undefined | null) {
   if (!iso) return "Unknown";
   return new Date(iso).toLocaleDateString(undefined, {
     year: "numeric",
@@ -33,11 +33,21 @@ function formatDate(iso: string | undefined) {
   });
 }
 
+const EXTRACTION_LIMIT = 250;
+
+type PlanInfo = {
+  isPro: boolean;
+  used: number;
+  currentPeriodEnd: string | null;
+};
+
 export default function AccountPage() {
   const [email, setEmail] = useState<string | null>(null);
   const [createdAt, setCreatedAt] = useState<string | undefined>(undefined);
   const [itemTypes, setItemTypes] = useState<string[]>([]);
+  const [plan, setPlan] = useState<PlanInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  const [billingLoading, setBillingLoading] = useState(false);
 
   useEffect(() => {
     const supabase = createClient();
@@ -55,9 +65,52 @@ export default function AccountPage() {
         .eq("user_id", user.id)
         .single();
       setItemTypes(profile?.item_types ?? []);
+
+      const { data: subscription } = await supabase
+        .from("subscriptions")
+        .select("status, current_period_start, current_period_end")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      const isPro =
+        subscription?.status === "active" ||
+        subscription?.status === "trialing";
+
+      let usageQuery = supabase
+        .from("extraction_usage")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id);
+      if (isPro && subscription?.current_period_start) {
+        usageQuery = usageQuery.gte(
+          "created_at",
+          subscription.current_period_start,
+        );
+      }
+      const { count } = await usageQuery;
+
+      setPlan({
+        isPro,
+        used: count ?? 0,
+        currentPeriodEnd: subscription?.current_period_end ?? null,
+      });
       setLoading(false);
     });
   }, []);
+
+  async function goToBilling(endpoint: "checkout" | "portal") {
+    setBillingLoading(true);
+    try {
+      const res = await fetch(`/api/stripe/${endpoint}`, { method: "POST" });
+      const body = (await res.json()) as { url?: string; error?: string };
+      if (body.url) {
+        window.location.href = body.url;
+        return;
+      }
+      console.error(body.error ?? "Failed to open billing page");
+    } finally {
+      setBillingLoading(false);
+    }
+  }
 
   const initial = email ? email.charAt(0).toUpperCase() : "?";
 
@@ -98,6 +151,38 @@ export default function AccountPage() {
                 </p>
               </div>
             </div>
+
+            {plan && (
+              <div className="rounded-2xl border border-sky-100 dark:border-slate-800 bg-white dark:bg-blue-950 p-5 shadow-sm">
+                <p className="mb-2 font-ui text-xs uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                  Plan
+                </p>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-ui text-sm font-semibold text-slate-700 dark:text-slate-200">
+                      {plan.isPro ? "Pro — $10/month" : "Free"}
+                    </p>
+                    <p className="font-ui text-xs text-slate-400 dark:text-slate-500">
+                      {Math.min(plan.used, EXTRACTION_LIMIT)}/{EXTRACTION_LIMIT}{" "}
+                      extractions used
+                      {plan.isPro
+                        ? ` this period · renews ${formatDate(plan.currentPeriodEnd)}`
+                        : " (lifetime)"}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={billingLoading}
+                    onClick={() =>
+                      goToBilling(plan.isPro ? "portal" : "checkout")
+                    }
+                    className="shrink-0 rounded-full bg-sky-500 px-4 py-2 font-ui text-xs font-semibold text-white shadow-sm transition-colors hover:bg-sky-600 disabled:opacity-60"
+                  >
+                    {plan.isPro ? "Manage" : "Upgrade — $10/mo"}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {itemTypes.length > 0 && (
               <div className="rounded-2xl border border-sky-100 dark:border-slate-800 bg-white dark:bg-blue-950 p-5 shadow-sm">
