@@ -16,7 +16,7 @@ export async function saveOnboarding(formData: FormData) {
   const age = formData.get("age") ? Number(formData.get("age")) : null;
   const emailScanConsent = formData.get("email_scan_consent") === "on";
 
-  await supabase.from("profiles").upsert({
+  const { error } = await supabase.from("profiles").upsert({
     user_id: user.id,
     item_types: itemTypes,
     gender: gender || null,
@@ -25,6 +25,11 @@ export async function saveOnboarding(formData: FormData) {
     email_scan_consent: emailScanConsent,
     email_scan_consent_at: emailScanConsent ? new Date().toISOString() : null,
   });
+
+  if (error) {
+    console.error("Failed to save onboarding:", error);
+    redirect("/onboarding");
+  }
 
   redirect("/dashboard");
 }
