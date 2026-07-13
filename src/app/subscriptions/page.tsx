@@ -154,7 +154,7 @@ export default function SubscriptionsPage() {
                   Pro
                 </p>
                 <p className="mt-1 font-display text-3xl text-slate-800 dark:text-slate-100">
-                  $10
+                  $9.99
                   <span className="font-ui text-sm text-slate-400 dark:text-slate-500">
                     /month
                   </span>
@@ -189,7 +189,7 @@ export default function SubscriptionsPage() {
                     onClick={() => goToBilling("checkout")}
                     className="rounded-full bg-sky-500 px-4 py-2 font-ui text-xs font-semibold text-white shadow-sm transition-colors hover:bg-sky-600 disabled:opacity-60"
                   >
-                    Upgrade — $10/mo
+                    Upgrade — $9.99/mo
                   </button>
                 )
               ) : (
