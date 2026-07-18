@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import posthog from "posthog-js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "~/lib/supabase/client";
 import { useSettings } from "~/lib/use-settings";
@@ -672,6 +673,7 @@ export default function DashboardPage() {
       if (!user) return;
       setEmail(user.email ?? null);
       setUserId(user.id);
+      posthog.identify(user.id, { email: user.email });
 
       Promise.all([
         supabase
@@ -1095,6 +1097,12 @@ export default function DashboardPage() {
           });
       }
       setItems((prev) => [data as Item, ...prev]);
+      posthog.capture("item_added", {
+        has_link: Boolean(addForm.link.trim()),
+        has_photo: Boolean(addForm.photoUrl),
+        has_category: Boolean(addForm.category),
+        source: "manual",
+      });
     }
     closeAddModal();
   };
@@ -1165,6 +1173,10 @@ export default function DashboardPage() {
       setEmailPasteTruncationWarning(data.truncationWarning ?? null);
 
       const added = data.added ?? 0;
+      posthog.capture("email_extraction_completed", {
+        items_added: added,
+        found_items: added > 0,
+      });
       if (added === 0) {
         setEmailPasteResult(
           "No purchase was found in that email. Paste the order confirmation you got right after checkout (it should show a price) — not a shipping or delivery update, which won't have one.",

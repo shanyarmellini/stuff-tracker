@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import posthog from "posthog-js";
 import { useEffect, useState } from "react";
 import { createClient } from "~/lib/supabase/client";
 import { cn } from "~/lib/utils";
@@ -70,6 +71,9 @@ export default function SubscriptionsPage() {
   }, []);
 
   async function goToBilling(endpoint: "checkout" | "portal") {
+    if (endpoint === "checkout") {
+      posthog.capture("upgrade_clicked");
+    }
     setBillingLoading(true);
     try {
       const res = await fetch(`/api/stripe/${endpoint}`, { method: "POST" });
