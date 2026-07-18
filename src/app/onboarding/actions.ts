@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { getPostHogClient } from "~/lib/posthog-server";
 import { createClient } from "~/lib/supabase/server";
 
 export async function saveOnboarding(formData: FormData) {
@@ -30,6 +31,18 @@ export async function saveOnboarding(formData: FormData) {
     console.error("Failed to save onboarding:", error);
     redirect("/onboarding");
   }
+
+  const posthog = getPostHogClient();
+  posthog.capture({
+    distinctId: user.id,
+    event: "onboarding_completed",
+    properties: {
+      item_types_count: itemTypes.length,
+      gender: gender || null,
+      age: age,
+    },
+  });
+  await posthog.flush();
 
   redirect("/dashboard");
 }

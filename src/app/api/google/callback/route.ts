@@ -1,6 +1,7 @@
 import { google } from "googleapis";
 import { NextResponse } from "next/server";
 import { createGoogleOAuthClient } from "~/lib/google/oauth";
+import { getPostHogClient } from "~/lib/posthog-server";
 import { createAdminClient } from "~/lib/supabase/admin";
 import { createClient } from "~/lib/supabase/server";
 
@@ -62,6 +63,13 @@ export async function GET(request: Request) {
       console.error("Failed to save Google connection:", upsertError.message);
       return redirectWithError("Failed to save your Google connection.");
     }
+
+    const posthog = getPostHogClient();
+    posthog.capture({
+      distinctId: user.id,
+      event: "gmail_connected",
+    });
+    await posthog.flush();
   } catch (err) {
     console.error("Google OAuth callback failed:", err);
     return redirectWithError("Something went wrong connecting to Google.");

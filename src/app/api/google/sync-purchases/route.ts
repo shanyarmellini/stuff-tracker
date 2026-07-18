@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { extractPurchasesFromEmails } from "~/lib/ai/extractPurchases";
 import { findPurchaseCandidateEmails } from "~/lib/google/gmail";
+import { getPostHogClient } from "~/lib/posthog-server";
 import { createAdminClient } from "~/lib/supabase/admin";
 import { createClient } from "~/lib/supabase/server";
 
@@ -144,5 +145,17 @@ export async function POST() {
   }
 
   await markSynced();
+
+  const posthog = getPostHogClient();
+  posthog.capture({
+    distinctId: user.id,
+    event: "gmail_purchases_synced",
+    properties: {
+      items_added: added,
+      candidates_found: candidates.length,
+    },
+  });
+  await posthog.flush();
+
   return NextResponse.json({ added });
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { env } from "~/env";
+import { getPostHogClient } from "~/lib/posthog-server";
 import { createStripeClient } from "~/lib/stripe/server";
 import { createClient } from "~/lib/supabase/server";
 
@@ -40,6 +41,14 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   }
+
+  const posthog = getPostHogClient();
+  posthog.capture({
+    distinctId: user.id,
+    event: "checkout_started",
+    properties: { stripe_session_id: session.id },
+  });
+  await posthog.flush();
 
   return NextResponse.json({ url: session.url });
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { env } from "~/env";
+import { getPostHogClient } from "~/lib/posthog-server";
 import { createStripeClient } from "~/lib/stripe/server";
 import { createAdminClient } from "~/lib/supabase/admin";
 
@@ -64,6 +65,7 @@ export async function POST(request: Request) {
   }
 
   const admin = createAdminClient();
+  const posthog = getPostHogClient();
 
   switch (event.type) {
     case "checkout.session.completed": {
@@ -72,23 +74,47 @@ export async function POST(request: Request) {
         const subscription = await stripe.subscriptions.retrieve(
           session.subscription,
         );
-        await upsertSubscription(
-          admin,
-          subscription,
-          session.metadata?.user_id ?? session.client_reference_id,
-        );
+        const userId = session.metadata?.user_id ?? session.client_reference_id;
+        await upsertSubscription(admin, subscription, userId);
+        if (userId) {
+          posthog.capture({
+            distinctId: userId,
+            event: "subscription_activated",
+            properties: {
+              stripe_subscription_id: subscription.id,
+              stripe_customer_id:
+                typeof subscription.customer === "string"
+                  ? subscription.customer
+                  : subscription.customer.id,
+            },
+          });
+        }
       }
       break;
     }
     case "customer.subscription.created":
-    case "customer.subscription.updated":
-    case "customer.subscription.deleted": {
+    case "customer.subscription.updated": {
       await upsertSubscription(admin, event.data.object);
+      break;
+    }
+    case "customer.subscription.deleted": {
+      const subscription = event.data.object;
+      await upsertSubscription(admin, subscription);
+      const userId = subscription.metadata.user_id;
+      if (userId) {
+        posthog.capture({
+          distinctId: userId,
+          event: "subscription_cancelled",
+          properties: { stripe_subscription_id: subscription.id },
+        });
+      }
       break;
     }
     default:
       break;
   }
+
+  await posthog.flush();
 
   return NextResponse.json({ received: true });
 }
