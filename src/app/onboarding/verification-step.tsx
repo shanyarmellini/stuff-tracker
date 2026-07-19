@@ -128,6 +128,14 @@ export function VerificationStep({
         >
           {submitting ? "Verifying..." : "Verify"}
         </button>
+        <button
+          type="button"
+          disabled={submitting}
+          onClick={onVerified}
+          className="-mt-4 w-full font-ui text-sm text-slate-400 transition-colors hover:text-slate-600 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          Skip for now
+        </button>
       </form>
     </div>
   );
