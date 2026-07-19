@@ -52,8 +52,14 @@ export type PurchaseCandidateEmail = {
   imageUrl: string | null;
 };
 
+// Deliberately broad - this only narrows down candidates so the AI never
+// sees the whole inbox. The AI extraction step (extractPurchasesFromEmails)
+// is what actually decides whether something is a genuine purchase, so a
+// wider net here trades a few more irrelevant candidates for catching
+// merchants that don't use the words "receipt"/"invoice"/"order" verbatim
+// (e.g. TikTok Shop, ride-share receipts).
 const PURCHASE_EMAIL_QUERY =
-  '(receipt OR invoice OR "order confirmation" OR "your order" OR "order has shipped" OR "thanks for your order")';
+  '(receipt OR invoice OR order OR purchase OR shipped OR delivered OR "payment confirmation" OR "thank you for your")';
 
 /**
  * Finds emails that look like purchase confirmations by connecting over IMAP
@@ -87,7 +93,7 @@ export async function findPurchaseCandidateEmailsViaImap(
     try {
       const query = since
         ? `${PURCHASE_EMAIL_QUERY} after:${Math.floor(since.getTime() / 1000)}`
-        : `${PURCHASE_EMAIL_QUERY} newer_than:180d`;
+        : `${PURCHASE_EMAIL_QUERY} newer_than:365d`;
 
       const uids = await client.search({ gmailraw: query }, { uid: true });
       if (!uids || uids.length === 0) return [];

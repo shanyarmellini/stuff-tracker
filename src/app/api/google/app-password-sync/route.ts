@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { scanAppPasswordGmailForItems } from "~/lib/google/scan-app-password-purchases";
 import { createClient } from "~/lib/supabase/server";
 
+export const maxDuration = 60;
+
 /**
  * Manually re-runs the Gmail App Password purchase scan for the signed-in
  * user. The onboarding flow only runs this once automatically and swallows
