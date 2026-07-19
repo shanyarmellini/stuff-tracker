@@ -9,9 +9,11 @@ const CODE_LENGTH = 16;
 export function VerificationStep({
   email,
   onVerified,
+  onSkipped,
 }: {
   email: string | null;
   onVerified: () => void;
+  onSkipped: () => void;
 }) {
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -131,7 +133,7 @@ export function VerificationStep({
         <button
           type="button"
           disabled={submitting}
-          onClick={onVerified}
+          onClick={onSkipped}
           className="-mt-4 w-full font-ui text-sm text-slate-400 transition-colors hover:text-slate-600 disabled:cursor-not-allowed disabled:opacity-60"
         >
           Skip for now
