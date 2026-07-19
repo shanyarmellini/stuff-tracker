@@ -10,10 +10,11 @@ function sanitizeLink(link: string | null): string | null {
 
 /**
  * Upserts AI-extracted purchases into `items` (de-duping on
- * `user_id,gmail_message_id`) and appends any newly-seen categories to
- * `profiles.item_types`. Shared by the Gmail OAuth sync route and the
- * Gmail App Password onboarding scan, which both feed the same
- * `extractPurchasesFromEmails` output into the same table.
+ * `user_id,gmail_message_id,name,price` - not just the message id, since a
+ * single email can contain multiple distinct products) and appends any
+ * newly-seen categories to `profiles.item_types`. Shared by the Gmail OAuth
+ * sync route and the Gmail App Password onboarding scan, which both feed
+ * the same `extractPurchasesFromEmails` output into the same table.
  */
 export async function insertExtractedPurchases(
   supabase: SupabaseClient,
@@ -56,7 +57,7 @@ export async function insertExtractedPurchases(
   const { data: inserted, error } = await supabase
     .from("items")
     .upsert(rows, {
-      onConflict: "user_id,gmail_message_id",
+      onConflict: "user_id,gmail_message_id,name,price",
       ignoreDuplicates: true,
     })
     .select("id");
