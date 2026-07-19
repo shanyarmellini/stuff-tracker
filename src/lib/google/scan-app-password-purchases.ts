@@ -16,6 +16,11 @@ export type ScanAppPasswordResult = {
   freshCandidates: number;
   extracted: number;
   added: number;
+  // Temporary diagnostic: subjects of the fresh candidates that were fed to
+  // the AI. Lets us tell "the search net is full of noise" apart from
+  // "the AI extraction/insert pipeline is broken" without reading email
+  // bodies. Remove once scan coverage is confirmed working end to end.
+  sampleSubjects?: string[];
 };
 
 /**
@@ -106,5 +111,6 @@ export async function scanAppPasswordGmailForItems(
     freshCandidates: fresh.length,
     extracted: extracted.length,
     added,
+    sampleSubjects: fresh.slice(0, 20).map((c) => c.subject),
   };
 }
