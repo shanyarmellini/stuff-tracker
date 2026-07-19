@@ -5,7 +5,10 @@ import { insertExtractedPurchases } from "~/lib/items/insert-extracted-purchases
 import { createAdminClient } from "~/lib/supabase/admin";
 
 const SCAN_BATCH_SIZE = 8;
-const MAX_SCAN_CANDIDATES = 20;
+// This is a one-time full-history import (unlike the incremental OAuth
+// sync-purchases route), so the cap is much higher - raised from 20 after
+// onboarding scans were missing most of a user's actual purchase history.
+const MAX_SCAN_CANDIDATES = 60;
 
 export type ScanAppPasswordResult = {
   connected: boolean;
@@ -77,13 +80,18 @@ export async function scanAppPasswordGmailForItems(
   );
   const fresh = candidates.filter((c) => !alreadyImported.has(c.id));
 
-  const extracted = [];
+  const batches: (typeof fresh)[] = [];
   for (let i = 0; i < fresh.length; i += SCAN_BATCH_SIZE) {
-    const { items } = await extractPurchasesFromEmails(
-      fresh.slice(i, i + SCAN_BATCH_SIZE),
-    );
-    extracted.push(...items);
+    batches.push(fresh.slice(i, i + SCAN_BATCH_SIZE));
   }
+  // Run batches concurrently rather than sequentially - this is a
+  // serverless function with a wall-clock budget, and each batch is an
+  // independent AI call, so there's no reason to pay for their latency
+  // one after another.
+  const batchResults = await Promise.all(
+    batches.map((batch) => extractPurchasesFromEmails(batch)),
+  );
+  const extracted = batchResults.flatMap((result) => result.items);
 
   const { added } = await insertExtractedPurchases(
     supabase,
