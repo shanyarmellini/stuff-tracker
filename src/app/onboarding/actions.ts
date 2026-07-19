@@ -1,8 +1,59 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { checkGmailAppPassword } from "~/lib/google/gmail-app-password";
 import { getPostHogClient } from "~/lib/posthog-server";
+import { createAdminClient } from "~/lib/supabase/admin";
 import { createClient } from "~/lib/supabase/server";
+
+export type VerifyAppPasswordResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export async function verifyGmailAppPassword(
+  appPassword: string,
+): Promise<VerifyAppPasswordResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user?.email) {
+    return { ok: false, error: "You must be signed in to connect Gmail." };
+  }
+
+  const normalized = appPassword.replace(/\s+/g, "");
+  if (normalized.length !== 16) {
+    return { ok: false, error: "App passwords are 16 characters long." };
+  }
+
+  const result = await checkGmailAppPassword(user.email, normalized);
+  if (!result.ok) {
+    return {
+      ok: false,
+      error:
+        result.reason === "invalid_credentials"
+          ? "That app password didn't work. Double-check you copied it correctly."
+          : "Couldn't reach Gmail to verify that password. Please try again.",
+    };
+  }
+
+  const { error } = await createAdminClient()
+    .from("gmail_app_connections")
+    .upsert({
+      user_id: user.id,
+      email: user.email,
+      app_password: normalized,
+      updated_at: new Date().toISOString(),
+    });
+
+  if (error) {
+    console.error("Failed to save Gmail app password:", error);
+    return { ok: false, error: "Failed to save your app password." };
+  }
+
+  return { ok: true };
+}
 
 export async function saveOnboarding(formData: FormData) {
   const supabase = await createClient();
