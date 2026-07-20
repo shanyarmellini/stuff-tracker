@@ -17,17 +17,20 @@ export function Navbar({ user }: { user: User | null }) {
 
   return (
     <nav className="border-b border-border bg-background">
-      <div className="mx-auto flex h-14 max-w-3xl items-center gap-6 px-4">
-        <Link href="/" className="font-semibold tracking-tight">
+      <div className="mx-auto flex h-14 max-w-3xl items-center gap-3 overflow-x-auto px-4 sm:gap-6">
+        <Link
+          href="/"
+          className="shrink-0 whitespace-nowrap font-semibold tracking-tight"
+        >
           Stuff Tracker
         </Link>
-        <div className="flex flex-1 gap-4">
+        <div className="flex flex-1 items-center gap-3 sm:gap-4">
           {links.map((link) => (
             <Link
               key={link.href}
               href={link.href}
               className={cn(
-                "text-sm transition-colors hover:text-foreground",
+                "text-sm whitespace-nowrap transition-colors hover:text-foreground",
                 pathname === link.href
                   ? "text-foreground"
                   : "text-muted-foreground",
@@ -40,7 +43,7 @@ export function Navbar({ user }: { user: User | null }) {
             <Link
               href="/admin"
               className={cn(
-                "text-sm transition-colors hover:text-foreground",
+                "text-sm whitespace-nowrap transition-colors hover:text-foreground",
                 pathname === "/admin"
                   ? "text-foreground"
                   : "text-muted-foreground",
@@ -50,7 +53,7 @@ export function Navbar({ user }: { user: User | null }) {
             </Link>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {user ? (
             <form action={signout}>
               <Button type="submit" variant="outline" size="sm">

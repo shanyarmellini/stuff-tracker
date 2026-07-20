@@ -102,6 +102,7 @@ export async function POST(request: Request) {
   const imageUrl = isHtml ? extractFirstImageUrl(source) : null;
 
   const maxItemsPerEmail = isPro ? PRO_ITEMS_PER_EMAIL : FREE_ITEMS_PER_EMAIL;
+  const existingCategories: string[] = profile?.item_types ?? [];
 
   let result: Awaited<ReturnType<typeof extractPurchasesFromEmails>>;
   try {
@@ -116,6 +117,7 @@ export async function POST(request: Request) {
         },
       ],
       maxItemsPerEmail,
+      existingCategories,
     );
   } catch (err) {
     if (err instanceof Anthropic.AuthenticationError) {
@@ -155,7 +157,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ added: 0, truncationWarning });
   }
 
-  const existingTypes: string[] = profile?.item_types ?? [];
+  const existingTypes = existingCategories;
   const seenTypesLower = new Set(existingTypes.map((t) => t.toLowerCase()));
   const newTypes: string[] = [];
 
@@ -180,6 +182,7 @@ export async function POST(request: Request) {
       link: sanitizeLink(item.link),
       category: item.category.toLowerCase(),
       photo_url: item.imageUrl,
+      quantity: item.quantity,
       sort_order: nextSortOrder--,
       source: "manual_ai",
     };

@@ -4,8 +4,13 @@ import type { ExtractedPurchase } from "~/lib/ai/extractPurchases";
 const LINK_FORMAT = /^(https?:\/\/)?([^./\s]+\.)+[^./\s]{2,}(\/\S*)?$/i;
 
 function sanitizeLink(link: string | null): string | null {
-  if (!link || !LINK_FORMAT.test(link.trim())) return null;
-  return link.trim();
+  if (!link) return null;
+  const trimmed = link.trim();
+  if (!LINK_FORMAT.test(trimmed)) {
+    console.warn("Dropping malformed item link from AI extraction:", trimmed);
+    return null;
+  }
+  return trimmed;
 }
 
 /**
@@ -48,6 +53,7 @@ export async function insertExtractedPurchases(
       link: sanitizeLink(item.link),
       category: item.category.toLowerCase(),
       photo_url: item.imageUrl,
+      quantity: item.quantity,
       sort_order: nextSortOrder--,
       source: "gmail_ai",
       gmail_message_id: item.emailId,

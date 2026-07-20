@@ -3,6 +3,8 @@
 import Link from "next/link";
 import posthog from "posthog-js";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ScanningStep } from "~/app/onboarding/scanning-step";
+import { VerificationStep } from "~/app/onboarding/verification-step";
 import { createClient } from "~/lib/supabase/client";
 import { useSettings } from "~/lib/use-settings";
 import { cn } from "~/lib/utils";
@@ -17,6 +19,7 @@ type Item = {
   category: string | null;
   sort_order: number;
   created_at: string;
+  quantity: number;
 };
 
 type PlaceholderItem = (typeof PLACEHOLDER_ITEMS)[0];
@@ -30,6 +33,7 @@ type ViewItem = {
   emoji: string | null;
   gradient: string | null;
   category: string | null;
+  quantity: number;
 };
 
 type HistoryRecord =
@@ -89,6 +93,47 @@ function SettingsIcon() {
     >
       <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
       <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function MenuIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <line x1="3" y1="6" x2="21" y2="6" />
+      <line x1="3" y1="12" x2="21" y2="12" />
+      <line x1="3" y1="18" x2="21" y2="18" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
     </svg>
   );
 }
@@ -509,6 +554,7 @@ function linkHostname(url: string | null): string | null {
 export default function DashboardPage() {
   const { settings } = useSettings();
   const [activeCategory, setActiveCategory] = useState("all");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [items, setItems] = useState<Item[]>([]);
   const [email, setEmail] = useState<string | null>(null);
@@ -523,6 +569,9 @@ export default function DashboardPage() {
   const [linkErrorId, setLinkErrorId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailModalStep, setEmailModalStep] = useState<
+    "choice" | "paste" | "gmail-verify" | "gmail-scanning"
+  >("choice");
   const [emailPasteText, setEmailPasteText] = useState("");
   const [emailPasteLoading, setEmailPasteLoading] = useState(false);
   const [emailPasteError, setEmailPasteError] = useState<string | null>(null);
@@ -732,7 +781,10 @@ export default function DashboardPage() {
   });
 
   const displayItems = items;
-  const totalSpent = displayItems.reduce((sum, item) => sum + item.price, 0);
+  const totalSpent = displayItems.reduce(
+    (sum, item) => sum + item.price * (item.quantity ?? 1),
+    0,
+  );
 
   const sectionTitle =
     activeCategory === "all"
@@ -1133,6 +1185,7 @@ export default function DashboardPage() {
 
   const closeEmailModal = () => {
     setShowEmailModal(false);
+    setEmailModalStep("choice");
     setEmailPasteText("");
     setEmailPasteLoading(false);
     setEmailPasteError(null);
@@ -1381,9 +1434,37 @@ export default function DashboardPage() {
 
   return (
     <>
-      <div className="flex h-[calc(100vh-3.5rem)] bg-sky-50 dark:bg-slate-800">
+      <div className="relative flex h-[calc(100vh-3.5rem)] overflow-hidden bg-sky-50 dark:bg-slate-800">
+        {/* ── Sidebar backdrop (mobile only) ── */}
+        {sidebarOpen && (
+          <button
+            type="button"
+            aria-label="Close categories"
+            onClick={() => setSidebarOpen(false)}
+            className="fixed inset-0 top-14 z-30 bg-black/30 md:hidden"
+          />
+        )}
+
         {/* ── Sidebar ── */}
-        <aside className="flex w-56 shrink-0 flex-col border-r border-sky-100 dark:border-slate-800 bg-white dark:bg-blue-950">
+        <aside
+          className={cn(
+            "fixed inset-y-0 top-14 left-0 z-40 flex w-64 max-w-[80vw] shrink-0 flex-col overflow-y-auto border-r border-sky-100 dark:border-slate-800 bg-white dark:bg-blue-950 transition-transform duration-200 ease-out md:static md:top-auto md:z-auto md:w-56 md:max-w-none md:translate-x-0",
+            sidebarOpen ? "translate-x-0" : "-translate-x-full",
+          )}
+        >
+          <div className="flex items-center justify-between px-3 pt-4 md:hidden">
+            <span className="font-display text-sm uppercase tracking-widest text-slate-400 dark:text-slate-500">
+              Categories
+            </span>
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(false)}
+              className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 dark:text-slate-500 transition-colors hover:bg-sky-50 dark:hover:bg-slate-800"
+              aria-label="Close categories"
+            >
+              <CloseIcon />
+            </button>
+          </div>
           <div className="flex flex-col gap-0.5 px-3 py-6">
             {categories.map((cat) => (
               <div key={cat.id} className="flex items-center gap-1">
@@ -1528,33 +1609,46 @@ export default function DashboardPage() {
         </aside>
 
         {/* ── Main area ── */}
-        <div className="flex flex-1 flex-col overflow-hidden">
-          {/* Top-right nav */}
-          <div className="flex shrink-0 justify-end gap-2 px-8 py-3">
-            <Link
-              href="/dashboard/account"
-              className="rounded-lg border border-sky-200 dark:border-slate-700 bg-white dark:bg-blue-950 px-4 py-1.5 text-xs text-slate-500 dark:text-slate-400 font-ui transition-colors hover:bg-sky-50 dark:hover:bg-slate-800 hover:text-sky-600 dark:hover:text-sky-400"
-            >
-              Account
-            </Link>
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          {/* Top nav */}
+          <div className="flex shrink-0 flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-8">
             <button
               type="button"
-              onClick={() => setShowEmailModal(true)}
-              className="rounded-lg border border-sky-200 dark:border-slate-700 bg-white dark:bg-blue-950 px-4 py-1.5 text-xs text-slate-500 dark:text-slate-400 font-ui transition-colors hover:bg-sky-50 dark:hover:bg-slate-800 hover:text-sky-600 dark:hover:text-sky-400"
+              onClick={() => setSidebarOpen(true)}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-sky-200 dark:border-slate-700 bg-white dark:bg-blue-950 text-slate-500 dark:text-slate-400 transition-colors hover:bg-sky-50 dark:hover:bg-slate-800 hover:text-sky-600 dark:hover:text-sky-400 md:hidden"
+              aria-label="Open categories"
             >
-              Add from email
+              <MenuIcon />
             </button>
-            <Link
-              href="/dashboard/settings"
-              className="flex items-center gap-1.5 rounded-lg border border-sky-200 dark:border-slate-700 bg-white dark:bg-blue-950 px-4 py-1.5 text-xs text-slate-500 dark:text-slate-400 font-ui transition-colors hover:bg-sky-50 dark:hover:bg-slate-800 hover:text-sky-600 dark:hover:text-sky-400"
-            >
-              <SettingsIcon />
-              Settings
-            </Link>
+            <div className="flex flex-col items-end gap-2 sm:flex-1 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+              <Link
+                href="/dashboard/account"
+                className="rounded-lg border border-sky-200 dark:border-slate-700 bg-white dark:bg-blue-950 px-4 py-1.5 text-center text-xs text-slate-500 dark:text-slate-400 font-ui transition-colors hover:bg-sky-50 dark:hover:bg-slate-800 hover:text-sky-600 dark:hover:text-sky-400"
+              >
+                Account
+              </Link>
+              <button
+                type="button"
+                onClick={() => {
+                  setEmailModalStep("choice");
+                  setShowEmailModal(true);
+                }}
+                className="rounded-lg border border-sky-200 dark:border-slate-700 bg-white dark:bg-blue-950 px-4 py-1.5 text-xs text-slate-500 dark:text-slate-400 font-ui transition-colors hover:bg-sky-50 dark:hover:bg-slate-800 hover:text-sky-600 dark:hover:text-sky-400"
+              >
+                Email
+              </button>
+              <Link
+                href="/dashboard/settings"
+                className="flex items-center justify-center gap-1.5 rounded-lg border border-sky-200 dark:border-slate-700 bg-white dark:bg-blue-950 px-4 py-1.5 text-xs text-slate-500 dark:text-slate-400 font-ui transition-colors hover:bg-sky-50 dark:hover:bg-slate-800 hover:text-sky-600 dark:hover:text-sky-400"
+              >
+                <SettingsIcon />
+                Settings
+              </Link>
+            </div>
           </div>
 
           {/* Scrollable content */}
-          <div className="flex-1 overflow-y-auto px-8 pb-10">
+          <div className="flex-1 overflow-y-auto px-4 pb-10 sm:px-8">
             {/* Header */}
             <div className="mb-5">
               <h1 className="font-display text-4xl tracking-wide text-slate-800 dark:text-slate-100">
@@ -1585,7 +1679,7 @@ export default function DashboardPage() {
             <div
               className={cn(
                 "mb-8 grid gap-4",
-                isEditing ? "grid-cols-4" : "grid-cols-2",
+                isEditing ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2",
               )}
             >
               <div className="rounded-2xl border border-sky-100 dark:border-slate-800 bg-white dark:bg-blue-950 p-5 shadow-sm">
@@ -1697,7 +1791,7 @@ export default function DashboardPage() {
                       "grid gap-4 [grid-auto-rows:240px]",
                       settings.layout === "list"
                         ? "grid-cols-1"
-                        : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4",
+                        : "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4",
                     )}
                   >
                     <div className="flex h-full flex-col gap-4">
@@ -1735,36 +1829,34 @@ export default function DashboardPage() {
                     {filteredItems.map((item) => {
                       const hostname = linkHostname(item.link);
                       return (
-                        // biome-ignore lint/a11y/useSemanticElements: contains nested buttons/links, which <button> cannot
-                        <div
-                          key={item.id}
-                          role="button"
-                          tabIndex={0}
-                          aria-label={
-                            isEditing
-                              ? `Edit ${item.name}`
-                              : `View ${item.name}`
-                          }
-                          draggable={isEditing}
-                          onDragStart={(e) => handleItemDragStart(e, item.id)}
-                          onDragOver={(e) => handleItemDragOver(e, item.id)}
-                          onDrop={(e) => e.preventDefault()}
-                          onDragEnd={handleItemDragEnd}
-                          onClick={() =>
-                            openViewItem({
-                              id: item.id,
-                              name: item.name,
-                              price: item.price,
-                              link: item.link,
-                              photoUrl: item.photo_url,
-                              emoji: item.emoji,
-                              gradient: null,
-                              category: item.category,
-                            })
-                          }
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
+                        <div key={item.id} className="relative h-full">
+                          {item.quantity > 1 && (
+                            <>
+                              <div
+                                aria-hidden="true"
+                                className="absolute inset-x-3 -top-2 bottom-1 -z-20 rounded-2xl border border-sky-100 bg-white dark:border-slate-800 dark:bg-blue-950"
+                              />
+                              <div
+                                aria-hidden="true"
+                                className="absolute inset-x-1.5 -top-1 bottom-0.5 -z-10 rounded-2xl border border-sky-100 bg-white dark:border-slate-800 dark:bg-blue-950"
+                              />
+                            </>
+                          )}
+                          {/* biome-ignore lint/a11y/useSemanticElements: contains nested buttons/links, which <button> cannot */}
+                          <div
+                            role="button"
+                            tabIndex={0}
+                            aria-label={
+                              isEditing
+                                ? `Edit ${item.name}`
+                                : `View ${item.name}`
+                            }
+                            draggable={isEditing}
+                            onDragStart={(e) => handleItemDragStart(e, item.id)}
+                            onDragOver={(e) => handleItemDragOver(e, item.id)}
+                            onDrop={(e) => e.preventDefault()}
+                            onDragEnd={handleItemDragEnd}
+                            onClick={() =>
                               openViewItem({
                                 id: item.id,
                                 name: item.name,
@@ -1774,79 +1866,103 @@ export default function DashboardPage() {
                                 emoji: item.emoji,
                                 gradient: null,
                                 category: item.category,
-                              });
+                                quantity: item.quantity,
+                              })
                             }
-                          }}
-                          className={cn(
-                            "relative flex h-full flex-col rounded-2xl bg-white dark:bg-blue-950 p-3 shadow-sm transition-all hover:shadow-md",
-                            isEditing
-                              ? "cursor-grab border-2 border-sky-300 dark:border-slate-600 active:cursor-grabbing"
-                              : "cursor-pointer border border-sky-100 dark:border-slate-800",
-                            draggedItemId === item.id && "opacity-40",
-                          )}
-                        >
-                          {isEditing && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteItem(item.id);
-                              }}
-                              className="absolute -right-2 -top-2 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white shadow transition-colors hover:bg-red-600"
-                              aria-label={`Delete ${item.name}`}
-                            >
-                              <TrashIcon />
-                            </button>
-                          )}
-
-                          <p className="line-clamp-2 font-display text-2xl leading-tight tracking-wide text-slate-800 dark:text-slate-100">
-                            {item.name}
-                          </p>
-
-                          <div className="relative my-2 flex-1 overflow-hidden rounded-xl bg-sky-50 dark:bg-slate-800">
-                            {item.photo_url && !brokenPhotoIds.has(item.id) ? (
-                              // biome-ignore lint/performance/noImgElement: photo_url can be an arbitrary external URL
-                              <img
-                                src={item.photo_url}
-                                alt={item.name}
-                                draggable={false}
-                                onError={() =>
-                                  setBrokenPhotoIds((prev) =>
-                                    new Set(prev).add(item.id),
-                                  )
-                                }
-                                className="h-full w-full object-contain"
-                              />
-                            ) : (
-                              <div className="flex h-full items-center justify-center">
-                                <span className="text-4xl text-slate-300 dark:text-slate-600">
-                                  {item.emoji ?? "📦"}
-                                </span>
-                              </div>
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                openViewItem({
+                                  id: item.id,
+                                  name: item.name,
+                                  price: item.price,
+                                  link: item.link,
+                                  photoUrl: item.photo_url,
+                                  emoji: item.emoji,
+                                  gradient: null,
+                                  category: item.category,
+                                  quantity: item.quantity,
+                                });
+                              }
+                            }}
+                            className={cn(
+                              "relative flex h-full flex-col rounded-2xl bg-white dark:bg-blue-950 p-3 shadow-sm transition-all hover:shadow-md",
+                              isEditing
+                                ? "cursor-grab border-2 border-sky-300 dark:border-slate-600 active:cursor-grabbing"
+                                : "cursor-pointer border border-sky-100 dark:border-slate-800",
+                              draggedItemId === item.id && "opacity-40",
                             )}
-                          </div>
-
-                          <div>
-                            <p className="truncate font-ui text-base font-semibold text-slate-700 dark:text-slate-200">
-                              ${item.price.toFixed(2)}
-                            </p>
-                            {hostname && item.link && (
-                              <a
-                                href={
-                                  item.link.startsWith("http")
-                                    ? item.link
-                                    : `https://${item.link}`
-                                }
-                                target="_blank"
-                                rel="noreferrer"
-                                draggable={false}
-                                onClick={(e) => e.stopPropagation()}
-                                className="flex min-w-0 items-center gap-1 font-ui text-xs text-sky-400 dark:text-sky-300 transition-colors hover:text-sky-500 dark:hover:text-sky-400"
+                          >
+                            {isEditing && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteItem(item.id);
+                                }}
+                                className="absolute -right-2 -top-2 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white shadow transition-colors hover:bg-red-600"
+                                aria-label={`Delete ${item.name}`}
                               >
-                                <span className="truncate">{hostname}</span>
-                                <ExternalLinkIcon />
-                              </a>
+                                <TrashIcon />
+                              </button>
                             )}
+
+                            <p className="line-clamp-2 font-display text-2xl leading-tight tracking-wide text-slate-800 dark:text-slate-100">
+                              {item.name}
+                              {item.quantity > 1 && (
+                                <span className="text-slate-400 dark:text-slate-500">
+                                  {" "}
+                                  ×{item.quantity}
+                                </span>
+                              )}
+                            </p>
+
+                            <div className="relative my-2 flex-1 overflow-hidden rounded-xl bg-sky-50 dark:bg-slate-800">
+                              {item.photo_url &&
+                              !brokenPhotoIds.has(item.id) ? (
+                                // biome-ignore lint/performance/noImgElement: photo_url can be an arbitrary external URL
+                                <img
+                                  src={item.photo_url}
+                                  alt={item.name}
+                                  draggable={false}
+                                  onError={() =>
+                                    setBrokenPhotoIds((prev) =>
+                                      new Set(prev).add(item.id),
+                                    )
+                                  }
+                                  className="h-full w-full object-contain"
+                                />
+                              ) : (
+                                <div className="flex h-full items-center justify-center">
+                                  <span className="text-4xl text-slate-300 dark:text-slate-600">
+                                    {item.emoji ?? "📦"}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+
+                            <div>
+                              <p className="truncate font-ui text-base font-semibold text-slate-700 dark:text-slate-200">
+                                ${item.price.toFixed(2)}
+                              </p>
+                              {hostname && item.link && (
+                                <a
+                                  href={
+                                    item.link.startsWith("http")
+                                      ? item.link
+                                      : `https://${item.link}`
+                                  }
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  draggable={false}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="flex min-w-0 items-center gap-1 font-ui text-xs text-sky-400 dark:text-sky-300 transition-colors hover:text-sky-500 dark:hover:text-sky-400"
+                                >
+                                  <span className="truncate">{hostname}</span>
+                                  <ExternalLinkIcon />
+                                </a>
+                              )}
+                            </div>
                           </div>
                         </div>
                       );
@@ -2291,125 +2407,201 @@ export default function DashboardPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 dark:bg-black/40 backdrop-blur-sm">
           <button
             type="button"
-            aria-label="Close add from email"
+            aria-label="Close"
             onClick={closeEmailModal}
             className="absolute inset-0 cursor-default"
           />
-          <div className="relative z-10 flex w-full max-w-lg flex-col gap-4 rounded-2xl border border-sky-100 dark:border-slate-800 bg-white dark:bg-blue-950 p-6 shadow-lg">
-            <div className="flex items-start justify-between gap-3">
-              <h2 className="font-display text-2xl tracking-wide text-slate-800 dark:text-slate-100">
-                Add from email
-              </h2>
-              {planInfo && (
-                <span className="shrink-0 rounded-full border border-sky-200 dark:border-slate-700 bg-sky-50 dark:bg-slate-800 px-3 py-1 font-ui text-xs font-medium text-sky-600 dark:text-sky-400">
-                  {planInfo.isPro ? "Pro" : "Free"} plan ·{" "}
-                  {Math.min(planInfo.used, EXTRACTION_LIMIT)}/{EXTRACTION_LIMIT}{" "}
-                  used
-                </span>
-              )}
-            </div>
-            <div className="-mt-4">
-              <p className="mt-1 font-ui text-sm text-slate-400 dark:text-slate-500">
-                Paste the full text of an order confirmation email below. AI
-                will pull out the item, price, and store, and add it to your
-                collection.
-              </p>
-              <p className="mt-2 font-ui text-xs text-slate-400 dark:text-slate-500">
-                Tip: paste &ldquo;Show original&rdquo; instead of the visible
-                email to also get a product photo and link. In Gmail, open the
-                actual email itself (not an order-tracking summary card) — the
-                &#8942; (more) menu you want is on the right side of that email,
-                a little below the top toolbar, next to reply/forward. Click it
-                and choose &ldquo;Show original,&rdquo; then paste that raw
-                source here instead of the rendered email text.
-              </p>
-            </div>
-            <div className="relative">
-              <textarea
-                value={emailPasteText}
-                onChange={(e) => setEmailPasteText(e.target.value)}
-                placeholder="From: orders@store.com&#10;Subject: Your order has shipped&#10;&#10;Thanks for your order..."
-                rows={10}
-                disabled={emailPasteLoading}
-                className="w-full resize-none rounded-xl border border-sky-100 dark:border-slate-800 bg-white dark:bg-blue-950 px-4 py-3 pr-16 font-ui text-sm text-slate-700 dark:text-slate-200 shadow-sm outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600 focus:border-sky-300 dark:focus:border-sky-600 focus:ring-2 focus:ring-sky-100 dark:focus:ring-sky-900/40 transition-all disabled:opacity-60"
+          {emailModalStep === "gmail-verify" ? (
+            <div className="relative z-10">
+              <VerificationStep
+                email={email}
+                onVerified={() => setEmailModalStep("gmail-scanning")}
+                onSkipped={() => setEmailModalStep("choice")}
               />
-              {emailPasteText && !emailPasteLoading && (
-                <button
-                  type="button"
-                  onClick={() => setEmailPasteText("")}
-                  className="absolute right-3 top-3 rounded-full bg-slate-100 dark:bg-slate-700 px-2 py-1 font-ui text-xs font-medium text-slate-500 dark:text-slate-400 transition-colors hover:bg-slate-200 dark:hover:bg-slate-600 hover:text-slate-600 dark:hover:text-slate-300"
-                >
-                  Clear
-                </button>
-              )}
             </div>
-            {emailPasteError && (
-              <p className="font-ui text-sm text-red-500 dark:text-red-400">
-                {emailPasteError}
-                {emailPasteLimitReached && (
-                  <>
-                    {" "}
-                    <Link
-                      href="/dashboard/account"
-                      className="underline hover:text-red-600 dark:hover:text-red-300"
+          ) : emailModalStep === "gmail-scanning" ? (
+            <div className="relative z-10">
+              <ScanningStep
+                onDone={async () => {
+                  await refreshItemsAndCategories();
+                  closeEmailModal();
+                }}
+              />
+            </div>
+          ) : (
+            <div className="relative z-10 flex w-full max-w-lg flex-col gap-4 rounded-2xl border border-sky-100 dark:border-slate-800 bg-white dark:bg-blue-950 p-6 shadow-lg">
+              {emailModalStep === "choice" ? (
+                <>
+                  <h2 className="font-display text-2xl tracking-wide text-slate-800 dark:text-slate-100">
+                    Add via email
+                  </h2>
+                  <p className="-mt-2 font-ui text-sm text-slate-400 dark:text-slate-500">
+                    Choose how you&apos;d like to add items from your email.
+                  </p>
+                  <div className="flex flex-col gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setEmailModalStep("paste")}
+                      className="rounded-xl border border-sky-200 dark:border-slate-700 bg-sky-50 dark:bg-slate-800 px-4 py-3 text-left font-ui transition-colors hover:bg-sky-100 dark:hover:bg-slate-600"
                     >
-                      View plan
-                    </Link>
-                  </>
-                )}
-              </p>
-            )}
-            {emailPasteTruncationWarning && (
-              <p className="font-ui text-sm text-amber-600 dark:text-amber-400">
-                {emailPasteTruncationWarning}
-                {!planInfo?.isPro && (
-                  <>
-                    {" "}
-                    <Link
-                      href="/subscriptions"
-                      className="underline hover:text-amber-700 dark:hover:text-amber-300"
+                      <span className="block font-display tracking-wide text-sky-600 dark:text-sky-400">
+                        Paste an email
+                      </span>
+                      <span className="mt-0.5 block text-xs text-slate-400 dark:text-slate-500">
+                        Paste the text of an order confirmation email.
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEmailModalStep("gmail-verify")}
+                      className="rounded-xl border border-sky-200 dark:border-slate-700 bg-sky-50 dark:bg-slate-800 px-4 py-3 text-left font-ui transition-colors hover:bg-sky-100 dark:hover:bg-slate-600"
                     >
-                      Upgrade
-                    </Link>
-                  </>
-                )}
-              </p>
-            )}
-            {emailPasteResult && (
-              <div className="flex items-center justify-between gap-2">
-                <p className="font-ui text-sm text-sky-600 dark:text-sky-400">
-                  {emailPasteResult}
-                </p>
-                {emailPasteAddedIds.length > 0 && (
+                      <span className="block font-display tracking-wide text-sky-600 dark:text-sky-400">
+                        Connect Gmail
+                      </span>
+                      <span className="mt-0.5 block text-xs text-slate-400 dark:text-slate-500">
+                        Verify a Gmail app password so we can scan your inbox
+                        automatically.
+                      </span>
+                    </button>
+                  </div>
                   <button
                     type="button"
-                    onClick={handleUndoEmailPaste}
-                    disabled={emailPasteUndoing}
-                    className="shrink-0 font-ui text-sm font-medium text-red-500 dark:text-red-400 underline decoration-dotted underline-offset-2 transition-colors hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50"
+                    onClick={closeEmailModal}
+                    className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 py-2.5 font-display tracking-wide text-slate-500 dark:text-slate-400 transition-colors hover:bg-slate-100 dark:hover:bg-slate-600"
                   >
-                    {emailPasteUndoing ? "Undoing…" : "Undo"}
+                    Cancel
                   </button>
-                )}
-              </div>
-            )}
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={closeEmailModal}
-                className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 py-2.5 font-display tracking-wide text-slate-500 dark:text-slate-400 transition-colors hover:bg-slate-100 dark:hover:bg-slate-600"
-              >
-                Close
-              </button>
-              <button
-                type="button"
-                onClick={handleEmailPasteSubmit}
-                disabled={!emailPasteText.trim() || emailPasteLoading}
-                className="flex-1 rounded-xl border border-sky-200 dark:border-slate-700 bg-sky-50 dark:bg-slate-800 py-2.5 font-display tracking-wide text-sky-600 dark:text-sky-400 transition-colors hover:bg-sky-100 dark:hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {emailPasteLoading ? "Reading…" : "Extract items"}
-              </button>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => setEmailModalStep("choice")}
+                        className="mb-1 font-ui text-xs text-slate-400 dark:text-slate-500 transition-colors hover:text-slate-600 dark:hover:text-slate-300"
+                      >
+                        ← Back
+                      </button>
+                      <h2 className="font-display text-2xl tracking-wide text-slate-800 dark:text-slate-100">
+                        Paste an email
+                      </h2>
+                    </div>
+                    {planInfo && (
+                      <span className="shrink-0 rounded-full border border-sky-200 dark:border-slate-700 bg-sky-50 dark:bg-slate-800 px-3 py-1 font-ui text-xs font-medium text-sky-600 dark:text-sky-400">
+                        {planInfo.isPro ? "Pro" : "Free"} plan ·{" "}
+                        {Math.min(planInfo.used, EXTRACTION_LIMIT)}/
+                        {EXTRACTION_LIMIT} used
+                      </span>
+                    )}
+                  </div>
+                  <div className="-mt-2">
+                    <p className="mt-1 font-ui text-sm text-slate-400 dark:text-slate-500">
+                      Paste the full text of an order confirmation email below.
+                      AI will pull out the item, price, and store, and add it to
+                      your collection.
+                    </p>
+                    <p className="mt-2 font-ui text-xs text-slate-400 dark:text-slate-500">
+                      Tip: paste &ldquo;Show original&rdquo; instead of the
+                      visible email to also get a product photo and link. In
+                      Gmail, open the actual email itself (not an order-tracking
+                      summary card) — the &#8942; (more) menu you want is on the
+                      right side of that email, a little below the top toolbar,
+                      next to reply/forward. Click it and choose &ldquo;Show
+                      original,&rdquo; then paste that raw source here instead
+                      of the rendered email text.
+                    </p>
+                  </div>
+                  <div className="relative">
+                    <textarea
+                      value={emailPasteText}
+                      onChange={(e) => setEmailPasteText(e.target.value)}
+                      placeholder="From: orders@store.com&#10;Subject: Your order has shipped&#10;&#10;Thanks for your order..."
+                      rows={10}
+                      disabled={emailPasteLoading}
+                      className="w-full resize-none rounded-xl border border-sky-100 dark:border-slate-800 bg-white dark:bg-blue-950 px-4 py-3 pr-16 font-ui text-sm text-slate-700 dark:text-slate-200 shadow-sm outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600 focus:border-sky-300 dark:focus:border-sky-600 focus:ring-2 focus:ring-sky-100 dark:focus:ring-sky-900/40 transition-all disabled:opacity-60"
+                    />
+                    {emailPasteText && !emailPasteLoading && (
+                      <button
+                        type="button"
+                        onClick={() => setEmailPasteText("")}
+                        className="absolute right-3 top-3 rounded-full bg-slate-100 dark:bg-slate-700 px-2 py-1 font-ui text-xs font-medium text-slate-500 dark:text-slate-400 transition-colors hover:bg-slate-200 dark:hover:bg-slate-600 hover:text-slate-600 dark:hover:text-slate-300"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  {emailPasteError && (
+                    <p className="font-ui text-sm text-red-500 dark:text-red-400">
+                      {emailPasteError}
+                      {emailPasteLimitReached && (
+                        <>
+                          {" "}
+                          <Link
+                            href="/dashboard/account"
+                            className="underline hover:text-red-600 dark:hover:text-red-300"
+                          >
+                            View plan
+                          </Link>
+                        </>
+                      )}
+                    </p>
+                  )}
+                  {emailPasteTruncationWarning && (
+                    <p className="font-ui text-sm text-amber-600 dark:text-amber-400">
+                      {emailPasteTruncationWarning}
+                      {!planInfo?.isPro && (
+                        <>
+                          {" "}
+                          <Link
+                            href="/subscriptions"
+                            className="underline hover:text-amber-700 dark:hover:text-amber-300"
+                          >
+                            Upgrade
+                          </Link>
+                        </>
+                      )}
+                    </p>
+                  )}
+                  {emailPasteResult && (
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-ui text-sm text-sky-600 dark:text-sky-400">
+                        {emailPasteResult}
+                      </p>
+                      {emailPasteAddedIds.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleUndoEmailPaste}
+                          disabled={emailPasteUndoing}
+                          className="shrink-0 font-ui text-sm font-medium text-red-500 dark:text-red-400 underline decoration-dotted underline-offset-2 transition-colors hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50"
+                        >
+                          {emailPasteUndoing ? "Undoing…" : "Undo"}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={closeEmailModal}
+                      className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 py-2.5 font-display tracking-wide text-slate-500 dark:text-slate-400 transition-colors hover:bg-slate-100 dark:hover:bg-slate-600"
+                    >
+                      Close
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleEmailPasteSubmit}
+                      disabled={!emailPasteText.trim() || emailPasteLoading}
+                      className="flex-1 rounded-xl border border-sky-200 dark:border-slate-700 bg-sky-50 dark:bg-slate-800 py-2.5 font-display tracking-wide text-sky-600 dark:text-sky-400 transition-colors hover:bg-sky-100 dark:hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {emailPasteLoading ? "Reading…" : "Extract items"}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -2445,6 +2637,12 @@ export default function DashboardPage() {
             ) : (
               <h2 className="mb-1 font-display text-2xl tracking-wide text-slate-800 dark:text-slate-100">
                 {viewItem.name}
+                {viewItem.quantity > 1 && (
+                  <span className="text-slate-400 dark:text-slate-500">
+                    {" "}
+                    ×{viewItem.quantity}
+                  </span>
+                )}
               </h2>
             )}
             {isEditing && viewItemId ? (

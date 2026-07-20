@@ -16,9 +16,14 @@ export type ExtractedPurchase = {
   link: string | null;
   category: string;
   imageUrl: string | null;
+  quantity: number;
 };
 
-function buildRecordPurchasesTool() {
+function buildRecordPurchasesTool(existingCategories: string[]) {
+  const existingCategoriesNote =
+    existingCategories.length > 0
+      ? ` The user already has these categories: ${existingCategories.join(", ")}. Reuse one of these whenever it genuinely fits, matching case exactly - don't create a near-duplicate (e.g. "Rideshare" when "Transportation" already exists). Only create a new category when none of the existing ones fit.`
+      : "";
   return {
     name: "record_purchases",
     description:
@@ -53,13 +58,17 @@ function buildRecordPurchasesTool() {
               },
               category: {
                 type: "string",
-                description:
-                  "One general category, e.g. Skincare, Makeup, Hair, Fragrance, Clothing, Electronics, Books, Fitness, Home, Misc",
+                description: `One general category based on what the purchase actually is, not which store it came from. Any purchase that recurs on a monthly (or other regular) billing cycle - streaming, software, memberships, subscriptions boxes, etc. - goes in "Subscriptions", regardless of merchant. Any ride, rideshare, or trip charge (Uber, Lyft, taxis, transit passes, parking, gas) goes in "Transportation". Other common categories: Skincare, Makeup, Hair, Fragrance, Clothing, Electronics, Books, Fitness, Home, Food, Misc.${existingCategoriesNote} It's fine to invent a new category not in these lists if it genuinely fits the item better than any existing one.`,
               },
               image_url: {
                 type: "string",
                 description:
                   "The exact URL from this item's own nearby [photo: URL] marker, copied verbatim. Omit if none is nearby - never reuse another item's photo.",
+              },
+              quantity: {
+                type: "integer",
+                description:
+                  "How many of this exact item were purchased, as a single number - e.g. an explicit 'Qty: 3' or '3x' next to the item, or the same product listed as several separate identical line items (same name and same per-unit price) within one order. Count carefully and only combine line items that are genuinely identical (same name AND same price) - two different rides or products that happen to cost the same must NOT be merged. Default to 1 when there's no indication of more than one.",
               },
             },
             required: ["email_id", "name", "price", "merchant", "category"],
@@ -80,6 +89,7 @@ type ToolOutput = {
     link?: string;
     category: string;
     image_url?: string;
+    quantity?: number;
   }[];
 };
 
@@ -91,6 +101,7 @@ export type ExtractPurchasesResult = {
 export async function extractPurchasesFromEmails(
   emails: CandidateEmail[],
   maxItemsPerEmail = 20,
+  existingCategories: string[] = [],
 ): Promise<ExtractPurchasesResult> {
   if (emails.length === 0) return { items: [], truncated: false };
 
@@ -105,7 +116,7 @@ export async function extractPurchasesFromEmails(
   const response = await client.messages.create({
     model: "claude-haiku-4-5",
     max_tokens: 8192,
-    tools: [buildRecordPurchasesTool()],
+    tools: [buildRecordPurchasesTool(existingCategories)],
     tool_choice: { type: "tool", name: "record_purchases" },
     messages: [
       {
@@ -125,7 +136,7 @@ export async function extractPurchasesFromEmails(
   const bodyTextByEmailId = new Map(emails.map((e) => [e.id, e.bodyText]));
   const items = Array.isArray(output.items) ? output.items : [];
 
-  const seen = new Set<string>();
+  const seen = new Map<string, number>();
   const countByEmailId = new Map<string, number>();
   let truncated = false;
 
@@ -146,12 +157,20 @@ export async function extractPurchasesFromEmails(
     .map((item) => {
       // Only trust the AI's per-item image_url if it's a marker that
       // genuinely appears in that email's source text - otherwise fall back
-      // to the email's single best image (e.g. plain single-item emails).
+      // to the email's single best image, but only when the email has just
+      // one item: with multiple items, that single "best" image is a
+      // per-email guess, so reusing it across items would show the same
+      // (possibly unrelated) photo on more than one card.
       const bodyText = bodyTextByEmailId.get(item.email_id) ?? "";
       const itemImage =
         item.image_url && bodyText.includes(item.image_url)
           ? item.image_url
           : null;
+      const isOnlyItemInEmail = countByEmailId.get(item.email_id) === 1;
+      const quantity =
+        Number.isInteger(item.quantity) && (item.quantity ?? 0) > 0
+          ? (item.quantity as number)
+          : 1;
       return {
         emailId: item.email_id,
         name: item.name,
@@ -159,19 +178,32 @@ export async function extractPurchasesFromEmails(
         merchant: item.merchant,
         link: item.link ?? null,
         category: item.category || "Misc",
-        imageUrl: itemImage ?? imageByEmailId.get(item.email_id) ?? null,
+        imageUrl:
+          itemImage ??
+          (isOnlyItemInEmail ? imageByEmailId.get(item.email_id) : null) ??
+          null,
+        quantity,
       };
     })
-    .filter((item) => {
-      // Some order confirmations list the exact same product as two separate
-      // line items (e.g. split across order lines) instead of one line with
-      // a quantity - since there's no quantity field, collapse these down to
-      // a single card rather than showing indistinguishable duplicates.
+    .reduce<ExtractedPurchase[]>((merged, item) => {
+      // Some order confirmations list the exact same product as two or more
+      // separate line items (e.g. split across order lines) instead of one
+      // line with a quantity. The AI is asked to report an accurate quantity
+      // per item, but as a safety net against it still splitting a genuine
+      // duplicate into separate entries, merge same name+price items within
+      // one email by summing their quantities rather than dropping the
+      // extras - that would silently undercount how many were bought.
       const key = `${item.emailId}|${item.name.toLowerCase().trim()}|${item.price}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+      const existingIndex = seen.get(key);
+      if (existingIndex !== undefined) {
+        const existing = merged[existingIndex];
+        if (existing) existing.quantity += item.quantity;
+        return merged;
+      }
+      seen.set(key, merged.length);
+      merged.push(item);
+      return merged;
+    }, []);
 
   return { items: finalItems, truncated };
 }

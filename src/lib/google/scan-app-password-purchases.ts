@@ -8,7 +8,11 @@ const SCAN_BATCH_SIZE = 8;
 // This is a one-time full-history import (unlike the incremental OAuth
 // sync-purchases route), so the cap is much higher - raised from 20 after
 // onboarding scans were missing most of a user's actual purchase history.
-const MAX_SCAN_CANDIDATES = 60;
+// These are the survivors after the IMAP layer has already dropped marketing
+// noise, so each slot here is a likely-real purchase rather than a keyword
+// coincidence - raised again once code-side denoising made the candidate set
+// dense enough to be worth the extra AI batches.
+const MAX_SCAN_CANDIDATES = 100;
 
 export type ScanAppPasswordResult = {
   connected: boolean;
@@ -94,7 +98,9 @@ export async function scanAppPasswordGmailForItems(
   // independent AI call, so there's no reason to pay for their latency
   // one after another.
   const batchResults = await Promise.all(
-    batches.map((batch) => extractPurchasesFromEmails(batch)),
+    batches.map((batch) =>
+      extractPurchasesFromEmails(batch, 20, profile?.item_types ?? []),
+    ),
   );
   const extracted = batchResults.flatMap((result) => result.items);
 
