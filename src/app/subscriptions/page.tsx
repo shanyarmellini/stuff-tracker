@@ -173,6 +173,7 @@ export default function SubscriptionsPage() {
                   emails are scanned
                 </li>
                 <li>Up to 40 items per email</li>
+                <li>Unlimited manual items</li>
                 <li>Quota resets automatically each billing period</li>
               </ul>
               {signedIn ? (
