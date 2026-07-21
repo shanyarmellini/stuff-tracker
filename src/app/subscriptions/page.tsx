@@ -123,7 +123,10 @@ export default function SubscriptionsPage() {
                 </p>
               </div>
               <ul className="flex flex-1 flex-col gap-2 font-ui text-sm text-slate-600 dark:text-slate-300">
-                <li>250 AI email extractions (lifetime)</li>
+                <li>
+                  Items made for emails from the last 6 months, or until 1,000
+                  emails are scanned
+                </li>
                 <li>Up to 20 items per email</li>
                 <li>Unlimited manual items</li>
               </ul>
@@ -165,7 +168,10 @@ export default function SubscriptionsPage() {
                 </p>
               </div>
               <ul className="flex flex-1 flex-col gap-2 font-ui text-sm text-slate-600 dark:text-slate-300">
-                <li>250 AI email extractions every month</li>
+                <li>
+                  Items made for emails from the last 2 years, or until 4,000
+                  emails are scanned
+                </li>
                 <li>Up to 40 items per email</li>
                 <li>Quota resets automatically each billing period</li>
               </ul>
