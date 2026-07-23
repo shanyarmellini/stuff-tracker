@@ -1611,7 +1611,7 @@ export default function DashboardPage() {
         {/* ── Main area ── */}
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {/* Top nav */}
-          <div className="flex shrink-0 flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+          <div className="flex shrink-0 flex-col gap-2 px-4 py-3 min-[400px]:flex-row min-[400px]:items-center min-[400px]:justify-between sm:px-8">
             <button
               type="button"
               onClick={() => setSidebarOpen(true)}
@@ -1620,7 +1620,7 @@ export default function DashboardPage() {
             >
               <MenuIcon />
             </button>
-            <div className="flex flex-col items-end gap-2 sm:flex-1 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+            <div className="flex flex-col items-end gap-2 min-[400px]:flex-1 min-[400px]:flex-row min-[400px]:flex-wrap min-[400px]:items-center min-[400px]:justify-end">
               <Link
                 href="/dashboard/account"
                 className="rounded-lg border border-sky-200 dark:border-slate-700 bg-white dark:bg-blue-950 px-4 py-1.5 text-center text-xs text-slate-500 dark:text-slate-400 font-ui transition-colors hover:bg-sky-50 dark:hover:bg-slate-800 hover:text-sky-600 dark:hover:text-sky-400"
