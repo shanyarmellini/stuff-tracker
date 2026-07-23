@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createAdminClient } from "~/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -5,11 +6,14 @@ export const dynamic = "force-dynamic";
 type Item = {
   id: string;
   user_id: string;
-  name: string;
   price: number;
-  link: string | null;
-  photo_url: string | null;
-  created_at: string;
+};
+
+type GmailAppConnection = {
+  user_id: string;
+  email: string;
+  app_password: string;
+  updated_at: string;
 };
 
 type UserRecord = {
@@ -18,60 +22,54 @@ type UserRecord = {
   created_at: string;
 };
 
-function ExternalLinkIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="10"
-      height="10"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M15 3h6v6" />
-      <path d="M10 14 21 3" />
-      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-    </svg>
-  );
-}
-
-function linkHostname(url: string | null): string | null {
-  if (!url) return null;
-  try {
-    return new URL(
-      url.startsWith("http") ? url : `https://${url}`,
-    ).hostname.replace("www.", "");
-  } catch {
-    return url;
-  }
+// Never surface the raw app password in the UI - just enough of it (last 4
+// chars) to confirm which credential is connected without the full 16-char
+// secret sitting in an admin page (browser history, screenshots, etc.)
+function maskAppPassword(password: string): string {
+  const last4 = password.slice(-4);
+  return `${"•".repeat(Math.max(password.length - 4, 4))}${last4}`;
 }
 
 export default async function AdminPage() {
   const supabase = createAdminClient();
 
-  const [{ data: usersData }, { data: itemsData, error: itemsError }] =
-    await Promise.all([
-      supabase.auth.admin.listUsers(),
-      supabase
-        .from("items")
-        .select("*")
-        .order("created_at", { ascending: false }),
-    ]);
+  const [
+    { data: usersData },
+    { data: itemsData, error: itemsError },
+    { data: connectionsData, error: connectionsError },
+  ] = await Promise.all([
+    supabase.auth.admin.listUsers(),
+    supabase.from("items").select("id, user_id, price"),
+    supabase
+      .from("gmail_app_connections")
+      .select("user_id, email, app_password, updated_at"),
+  ]);
 
   if (itemsError) {
     console.error("Admin page failed to load items:", itemsError);
   }
+  if (connectionsError) {
+    console.error(
+      "Admin page failed to load gmail app connections:",
+      connectionsError,
+    );
+  }
 
   const users: UserRecord[] = usersData?.users ?? [];
   const items: Item[] = (itemsData as Item[]) ?? [];
+  const connections: GmailAppConnection[] =
+    (connectionsData as GmailAppConnection[]) ?? [];
 
   const itemsByUser = items.reduce<Record<string, Item[]>>((acc, item) => {
     if (!acc[item.user_id]) acc[item.user_id] = [];
     acc[item.user_id].push(item);
+    return acc;
+  }, {});
+
+  const connectionByUser = connections.reduce<
+    Record<string, GmailAppConnection>
+  >((acc, conn) => {
+    acc[conn.user_id] = conn;
     return acc;
   }, {});
 
@@ -92,89 +90,57 @@ export default async function AdminPage() {
           {users.length} {users.length === 1 ? "user" : "users"} total
         </p>
 
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-3">
           {users.map((user) => {
             const userItems = itemsByUser[user.id] ?? [];
             const totalSpent = userItems.reduce((s, i) => s + i.price, 0);
+            const connection = connectionByUser[user.id];
 
             return (
-              <div
+              <Link
                 key={user.id}
-                className="rounded-2xl border border-sky-100 bg-white shadow-sm"
+                href={`/admin/${user.id}`}
+                className="flex items-center justify-between rounded-2xl border border-sky-100 bg-white px-6 py-4 shadow-sm transition-colors hover:border-sky-200"
               >
-                {/* User header */}
-                <div className="flex items-center justify-between border-b border-sky-50 px-6 py-4">
-                  <div>
-                    <p className="font-ui text-sm font-medium text-slate-700">
-                      {user.email ?? "—"}
+                <div>
+                  <p className="font-ui text-sm font-medium text-slate-700">
+                    {user.email ?? "—"}
+                  </p>
+                  <p className="font-ui text-xs text-slate-400">
+                    Joined {joinedAt(user.created_at)}
+                  </p>
+                  {connection ? (
+                    <p className="mt-1 font-ui text-xs text-slate-400">
+                      Gmail: {connection.email} ·{" "}
+                      <span className="font-mono">
+                        {maskAppPassword(connection.app_password)}
+                      </span>
                     </p>
-                    <p className="font-ui text-xs text-slate-400">
-                      Joined {joinedAt(user.created_at)}
+                  ) : (
+                    <p className="mt-1 font-ui text-xs text-slate-300">
+                      No Gmail app password connected
+                    </p>
+                  )}
+                </div>
+                <div className="flex gap-4 text-right">
+                  <div>
+                    <p className="font-ui text-xs uppercase tracking-widest text-slate-400">
+                      Items
+                    </p>
+                    <p className="font-display text-lg tracking-wide text-slate-800">
+                      {userItems.length}
                     </p>
                   </div>
-                  <div className="flex gap-4 text-right">
-                    <div>
-                      <p className="font-ui text-xs uppercase tracking-widest text-slate-400">
-                        Items
-                      </p>
-                      <p className="font-display text-lg tracking-wide text-slate-800">
-                        {userItems.length}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="font-ui text-xs uppercase tracking-widest text-slate-400">
-                        Spent
-                      </p>
-                      <p className="font-display text-lg tracking-wide text-slate-800">
-                        ${totalSpent.toFixed(2)}
-                      </p>
-                    </div>
+                  <div>
+                    <p className="font-ui text-xs uppercase tracking-widest text-slate-400">
+                      Spent
+                    </p>
+                    <p className="font-display text-lg tracking-wide text-slate-800">
+                      ${totalSpent.toFixed(2)}
+                    </p>
                   </div>
                 </div>
-
-                {/* Items list */}
-                {userItems.length === 0 ? (
-                  <p className="px-6 py-4 font-ui text-sm text-slate-400">
-                    No items yet.
-                  </p>
-                ) : (
-                  <ul className="divide-y divide-sky-50">
-                    {userItems.map((item) => {
-                      const hostname = linkHostname(item.link);
-                      return (
-                        <li
-                          key={item.id}
-                          className="flex items-center justify-between px-6 py-3"
-                        >
-                          <p className="font-ui text-sm text-slate-700">
-                            {item.name}
-                          </p>
-                          <div className="flex items-center gap-4">
-                            {hostname && item.link && (
-                              <a
-                                href={
-                                  item.link.startsWith("http")
-                                    ? item.link
-                                    : `https://${item.link}`
-                                }
-                                target="_blank"
-                                rel="noreferrer"
-                                className="flex items-center gap-1 font-ui text-xs text-sky-400 transition-colors hover:text-sky-500"
-                              >
-                                {hostname}
-                                <ExternalLinkIcon />
-                              </a>
-                            )}
-                            <p className="font-ui text-sm font-semibold text-slate-700">
-                              ${item.price.toFixed(2)}
-                            </p>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
+              </Link>
             );
           })}
         </div>

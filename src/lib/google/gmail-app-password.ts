@@ -88,6 +88,12 @@ const MARKETING_SUBJECT_PATTERNS: RegExp[] = [
   /ends (tonight|soon|today|tomorrow)|last chance|limited time|don'?t miss/i,
   /we miss you|come back|(items?|something) (still )?(in|left in) your cart|abandoned cart|your cart is/i,
   /rate your|review your (recent )?(purchase|experience)|how did we do|take our survey/i,
+  /\bwelcome to\b/i,
+  /special offer|top fans|for you:|just for you/i,
+  /earn (a |your )?\$?\d|\breward(s)?\b|credit today|free (shipping|gift) when/i,
+  /forgot (something|to (complete|finish))|complete your order\?|finish (checking out|your order)/i,
+  /can you believe|it'?s been \d+ (year|month|week)s?\b|happy anniversary/i,
+  /save[:\s]*[€$£]\d|buy (one|a)\b.*get (one|another)\b.*free/i,
 ];
 
 function looksLikeMarketingNoise(subject: string): boolean {

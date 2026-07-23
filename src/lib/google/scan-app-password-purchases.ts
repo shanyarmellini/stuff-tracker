@@ -1,8 +1,20 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { extractPurchasesFromEmails } from "~/lib/ai/extractPurchases";
+import type { PurchaseCandidateEmail } from "~/lib/google/gmail-app-password";
 import { findPurchaseCandidateEmailsViaImap } from "~/lib/google/gmail-app-password";
 import { insertExtractedPurchases } from "~/lib/items/insert-extracted-purchases";
 import { createAdminClient } from "~/lib/supabase/admin";
+
+// Shape persisted into email_scan_logs (candidates/sent_to_ai jsonb columns)
+// for admin debugging - see the migration for why this includes full bodies.
+function toLoggedEmail(email: PurchaseCandidateEmail) {
+  return {
+    message_id: email.id,
+    from: email.from,
+    subject: email.subject,
+    body_text: email.bodyText,
+  };
+}
 
 const SCAN_BATCH_SIZE = 8;
 // This is a one-time full-history import (unlike the incremental OAuth
@@ -11,8 +23,11 @@ const SCAN_BATCH_SIZE = 8;
 // These are the survivors after the IMAP layer has already dropped marketing
 // noise, so each slot here is a likely-real purchase rather than a keyword
 // coincidence - raised again once code-side denoising made the candidate set
-// dense enough to be worth the extra AI batches.
-const MAX_SCAN_CANDIDATES = 100;
+// dense enough to be worth the extra AI batches. Raised again (100 -> 200)
+// after confirming real scans were hitting this cap exactly, meaning
+// genuine purchases past the 100th slot (e.g. a low-frequency merchant's
+// older receipts) were being cut off entirely rather than just delayed.
+const MAX_SCAN_CANDIDATES = 200;
 
 export type ScanAppPasswordResult = {
   connected: boolean;
@@ -88,6 +103,12 @@ export async function scanAppPasswordGmailForItems(
     (existingRows ?? []).map((row) => row.gmail_message_id),
   );
   const fresh = candidates.filter((c) => !alreadyImported.has(c.id));
+
+  await admin.from("email_scan_logs").insert({
+    user_id: userId,
+    candidates: candidates.map(toLoggedEmail),
+    sent_to_ai: fresh.map(toLoggedEmail),
+  });
 
   const batches: (typeof fresh)[] = [];
   for (let i = 0; i < fresh.length; i += SCAN_BATCH_SIZE) {
