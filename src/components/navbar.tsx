@@ -14,6 +14,7 @@ const links = [
 
 export function Navbar({ user }: { user: User | null }) {
   const pathname = usePathname();
+  const isAdmin = user?.app_metadata?.role === "admin";
 
   return (
     <nav className="border-b border-border bg-background">
@@ -24,22 +25,22 @@ export function Navbar({ user }: { user: User | null }) {
         >
           Stuff Tracker
         </Link>
-        <div className="flex flex-1 items-center gap-3 sm:gap-4">
-          {links.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={cn(
-                "text-sm whitespace-nowrap transition-colors hover:text-foreground",
-                pathname === link.href
-                  ? "text-foreground"
-                  : "text-muted-foreground",
-              )}
-            >
-              {link.label}
-            </Link>
-          ))}
-          {user?.app_metadata?.role === "admin" && (
+        {isAdmin && (
+          <div className="flex flex-1 items-center gap-3 sm:gap-4">
+            {links.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={cn(
+                  "text-sm whitespace-nowrap transition-colors hover:text-foreground",
+                  pathname === link.href
+                    ? "text-foreground"
+                    : "text-muted-foreground",
+                )}
+              >
+                {link.label}
+              </Link>
+            ))}
             <Link
               href="/admin"
               className={cn(
@@ -51,38 +52,15 @@ export function Navbar({ user }: { user: User | null }) {
             >
               Admin
             </Link>
-          )}
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {user ? (
+          </div>
+        )}
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          {isAdmin && (
             <form action={signout}>
               <Button type="submit" variant="outline" size="sm">
                 Sign out
               </Button>
             </form>
-          ) : (
-            <>
-              <Button
-                asChild
-                variant={pathname === "/auth/login" ? "default" : "ghost"}
-                size="sm"
-                className={
-                  pathname !== "/auth/login" ? "border border-border" : ""
-                }
-              >
-                <Link href="/auth/login">Sign in</Link>
-              </Button>
-              <Button
-                asChild
-                variant={pathname === "/auth/signup" ? "default" : "ghost"}
-                size="sm"
-                className={
-                  pathname !== "/auth/signup" ? "border border-border" : ""
-                }
-              >
-                <Link href="/auth/signup">Sign up</Link>
-              </Button>
-            </>
           )}
         </div>
       </div>

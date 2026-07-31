@@ -2,6 +2,23 @@ import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 import { env } from "~/env";
 
+// While the app is gated behind a waitlist, only the admin account (me) may
+// use anything beyond the landing page. Everyone else is bounced to "/".
+const PUBLIC_PATHS = ["/", "/api/waitlist", "/api/stripe/webhook"];
+const ADMIN_AUTH_PATHS = ["/auth/login", "/auth/callback"];
+
+function isPublicPath(pathname: string) {
+  return PUBLIC_PATHS.some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`),
+  );
+}
+
+function isAdminAuthPath(pathname: string) {
+  return ADMIN_AUTH_PATHS.some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`),
+  );
+}
+
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
 
@@ -27,9 +44,22 @@ export async function proxy(request: NextRequest) {
   );
 
   // Refresh the auth token
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  return response;
+  const { pathname } = request.nextUrl;
+
+  if (isPublicPath(pathname)) {
+    return response;
+  }
+
+  const isAdmin = user?.app_metadata?.role === "admin";
+  if (isAdmin || isAdminAuthPath(pathname)) {
+    return response;
+  }
+
+  return NextResponse.redirect(new URL("/", request.url));
 }
 
 export const config = {
