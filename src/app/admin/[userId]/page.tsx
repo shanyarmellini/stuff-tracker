@@ -1,5 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import {
+  type AdminCardItem,
+  ItemCardPreview,
+} from "~/components/admin/item-card-preview";
 import { createAdminClient } from "~/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -18,10 +22,8 @@ type EmailScanLog = {
   sent_to_ai: LoggedEmail[];
 };
 
-type Item = {
+type Item = AdminCardItem & {
   id: string;
-  name: string;
-  price: number;
   gmail_message_id: string | null;
   source: string;
   created_at: string;
@@ -87,6 +89,82 @@ function EmailListSection({
   );
 }
 
+function ItemsSection({
+  title,
+  description,
+  items,
+  emailByMessageId,
+}: {
+  title: string;
+  description: string;
+  items: Item[];
+  emailByMessageId?: Map<string, LoggedEmail>;
+}) {
+  return (
+    <details className="rounded-2xl border border-sky-100 bg-white shadow-sm">
+      <summary className="cursor-pointer list-none px-6 py-4">
+        <h2 className="font-display text-lg tracking-wide text-slate-800">
+          {title} ({items.length})
+        </h2>
+        <p className="font-ui text-xs text-slate-400">
+          {description} Click to expand.
+        </p>
+      </summary>
+      {items.length === 0 ? (
+        <p className="border-t border-sky-50 px-6 py-4 font-ui text-sm text-slate-400">
+          None yet.
+        </p>
+      ) : (
+        <ul className="divide-y divide-sky-50 border-t border-sky-50">
+          {items.map((item) => {
+            const sourceEmail = item.gmail_message_id
+              ? emailByMessageId?.get(item.gmail_message_id)
+              : undefined;
+
+            return (
+              <li key={item.id} className="px-6 py-3">
+                <details>
+                  <summary className="flex cursor-pointer list-none items-center justify-between font-ui text-sm text-slate-700">
+                    <span>{item.name}</span>
+                    <span className="flex items-center gap-2">
+                      {sourceEmail && (
+                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-ui text-xs text-emerald-600">
+                          created from email
+                        </span>
+                      )}
+                      <span className="font-semibold">
+                        ${item.price.toFixed(2)}
+                      </span>
+                    </span>
+                  </summary>
+                  <div className="mt-3 flex flex-wrap items-start gap-4">
+                    <ItemCardPreview item={item} />
+                    {sourceEmail && (
+                      <details className="max-w-md rounded-xl border border-sky-100 bg-sky-50/50 p-3">
+                        <summary className="cursor-pointer list-none font-ui text-xs text-slate-600">
+                          <span className="font-medium">
+                            {sourceEmail.subject || "(no subject)"}
+                          </span>{" "}
+                          <span className="text-slate-400">
+                            — {sourceEmail.from}
+                          </span>
+                        </summary>
+                        <pre className="mt-2 whitespace-pre-wrap rounded-lg bg-white p-3 font-mono text-xs text-slate-600">
+                          {sourceEmail.body_text || "(empty body)"}
+                        </pre>
+                      </details>
+                    )}
+                  </div>
+                </details>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </details>
+  );
+}
+
 export default async function AdminUserPage({
   params,
 }: {
@@ -116,7 +194,9 @@ export default async function AdminUserPage({
       .maybeSingle(),
     supabase
       .from("items")
-      .select("id, name, price, gmail_message_id, source, created_at")
+      .select(
+        "id, name, price, link, photo_url, emoji, quantity, gmail_message_id, source, created_at",
+      )
       .eq("user_id", userId)
       .order("created_at", { ascending: false }),
   ]);
@@ -130,10 +210,14 @@ export default async function AdminUserPage({
   const scanLog = scanLogData as EmailScanLog | null;
   const items: Item[] = (itemsData as Item[]) ?? [];
   const aiItems = items.filter((item) => item.source === "gmail_ai");
+  const manualItems = items.filter((item) => item.source === "manual");
   const createdFromMessageIds = new Set(
     aiItems
       .map((item) => item.gmail_message_id)
       .filter((id): id is string => Boolean(id)),
+  );
+  const emailByMessageId = new Map(
+    (scanLog?.candidates ?? []).map((email) => [email.message_id, email]),
   );
 
   return (
@@ -202,35 +286,19 @@ export default async function AdminUserPage({
           </p>
         )}
 
-        <div className="rounded-2xl border border-sky-100 bg-white shadow-sm">
-          <div className="border-b border-sky-50 px-6 py-4">
-            <h2 className="font-display text-lg tracking-wide text-slate-800">
-              Items created from AI
-            </h2>
-            <p className="font-ui text-xs text-slate-400">
-              Item cards produced from the emails above.
-            </p>
-          </div>
-          {aiItems.length === 0 ? (
-            <p className="px-6 py-4 font-ui text-sm text-slate-400">
-              None yet.
-            </p>
-          ) : (
-            <ul className="divide-y divide-sky-50">
-              {aiItems.map((item) => (
-                <li
-                  key={item.id}
-                  className="flex items-center justify-between px-6 py-3"
-                >
-                  <p className="font-ui text-sm text-slate-700">{item.name}</p>
-                  <p className="font-ui text-sm font-semibold text-slate-700">
-                    ${item.price.toFixed(2)}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
+        <div className="mb-3">
+          <ItemsSection
+            title="Items created manually"
+            description="Items this user added themselves."
+            items={manualItems}
+          />
         </div>
+        <ItemsSection
+          title="Items created from AI"
+          description="Item cards produced from the emails above."
+          items={aiItems}
+          emailByMessageId={emailByMessageId}
+        />
       </div>
     </div>
   );

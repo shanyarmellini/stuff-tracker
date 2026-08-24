@@ -109,18 +109,27 @@ export default async function AdminPage() {
                   <p className="font-ui text-xs text-slate-400">
                     Joined {joinedAt(user.created_at)}
                   </p>
-                  {connection ? (
-                    <p className="mt-1 font-ui text-xs text-slate-400">
-                      Gmail: {connection.email} ·{" "}
-                      <span className="font-mono">
-                        {maskAppPassword(connection.app_password)}
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <span
+                      className={
+                        connection
+                          ? "rounded-full bg-emerald-50 px-2 py-0.5 font-ui text-xs text-emerald-600"
+                          : "rounded-full bg-slate-100 px-2 py-0.5 font-ui text-xs text-slate-400"
+                      }
+                    >
+                      {connection
+                        ? "Connected gmail app password"
+                        : "Not connected"}
+                    </span>
+                    {connection && (
+                      <span className="font-ui text-xs text-slate-400">
+                        {connection.email} ·{" "}
+                        <span className="font-mono">
+                          {maskAppPassword(connection.app_password)}
+                        </span>
                       </span>
-                    </p>
-                  ) : (
-                    <p className="mt-1 font-ui text-xs text-slate-300">
-                      No Gmail app password connected
-                    </p>
-                  )}
+                    )}
+                  </div>
                 </div>
                 <div className="flex gap-4 text-right">
                   <div>
