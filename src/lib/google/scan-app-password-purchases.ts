@@ -1,9 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { env } from "~/env";
 import { extractPurchasesFromEmails } from "~/lib/ai/extractPurchases";
 import type { PurchaseCandidateEmail } from "~/lib/google/gmail-app-password";
 import { findPurchaseCandidateEmailsViaImap } from "~/lib/google/gmail-app-password";
+import { MOCK_CANDIDATE_EMAILS } from "~/lib/google/mock-emails";
 import { insertExtractedPurchases } from "~/lib/items/insert-extracted-purchases";
 import { createAdminClient } from "~/lib/supabase/admin";
+
+const MOCK_GMAIL_ENABLED =
+  env.MOCK_GMAIL === "true" && env.NODE_ENV !== "production";
 
 // Shape persisted into email_scan_logs (candidates/sent_to_ai jsonb columns)
 // for admin debugging - see the migration for why this includes full bodies.
@@ -53,20 +58,32 @@ export async function scanAppPasswordGmailForItems(
   userId: string,
 ): Promise<ScanAppPasswordResult> {
   const admin = createAdminClient();
-  const { data: connection } = await admin
-    .from("gmail_app_connections")
-    .select("email, app_password")
-    .eq("user_id", userId)
-    .maybeSingle();
 
-  if (!connection) {
-    return {
-      connected: false,
-      candidatesFound: 0,
-      freshCandidates: 0,
-      extracted: 0,
-      added: 0,
-    };
+  let candidates: PurchaseCandidateEmail[];
+  if (MOCK_GMAIL_ENABLED) {
+    candidates = MOCK_CANDIDATE_EMAILS;
+  } else {
+    const { data: connection } = await admin
+      .from("gmail_app_connections")
+      .select("email, app_password")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (!connection) {
+      return {
+        connected: false,
+        candidatesFound: 0,
+        freshCandidates: 0,
+        extracted: 0,
+        added: 0,
+      };
+    }
+
+    candidates = await findPurchaseCandidateEmailsViaImap(
+      connection.email,
+      connection.app_password,
+      { limit: MAX_SCAN_CANDIDATES },
+    );
   }
 
   const { data: profile } = await supabase
@@ -74,12 +91,6 @@ export async function scanAppPasswordGmailForItems(
     .select("item_types")
     .eq("user_id", userId)
     .maybeSingle();
-
-  const candidates = await findPurchaseCandidateEmailsViaImap(
-    connection.email,
-    connection.app_password,
-    { limit: MAX_SCAN_CANDIDATES },
-  );
 
   if (candidates.length === 0) {
     return {

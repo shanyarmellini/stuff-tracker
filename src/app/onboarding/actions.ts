@@ -1,11 +1,15 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { env } from "~/env";
 import { checkGmailAppPassword } from "~/lib/google/gmail-app-password";
 import { scanAppPasswordGmailForItems } from "~/lib/google/scan-app-password-purchases";
 import { getPostHogClient } from "~/lib/posthog-server";
 import { createAdminClient } from "~/lib/supabase/admin";
 import { createClient } from "~/lib/supabase/server";
+
+const MOCK_GMAIL_ENABLED =
+  env.MOCK_GMAIL === "true" && env.NODE_ENV !== "production";
 
 export type VerifyAppPasswordResult =
   | { ok: true }
@@ -26,6 +30,13 @@ export async function verifyGmailAppPassword(
   const normalized = appPassword.replace(/\s+/g, "");
   if (normalized.length !== 16) {
     return { ok: false, error: "App passwords are 16 characters long." };
+  }
+
+  // Local testing only - skips the real IMAP check and connection save so
+  // onboarding can be exercised without a real Gmail account. The scan step
+  // that follows uses fixture emails instead of this (nonexistent) connection.
+  if (MOCK_GMAIL_ENABLED) {
+    return { ok: true };
   }
 
   const result = await checkGmailAppPassword(user.email, normalized);

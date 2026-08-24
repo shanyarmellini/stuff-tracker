@@ -14,6 +14,12 @@ export const env = createEnv({
     STRIPE_SECRET_KEY: z.string().min(1),
     STRIPE_WEBHOOK_SECRET: z.string().min(1),
     STRIPE_PRICE_ID: z.string().min(1),
+    // Dev-only local testing flags - see .env.example. Both default off, so
+    // production behavior is unaffected unless explicitly opted in.
+    AI_PROVIDER: z.enum(["anthropic", "ollama"]).default("anthropic"),
+    OLLAMA_BASE_URL: z.string().url().default("http://localhost:11434"),
+    OLLAMA_MODEL: z.string().default("qwen2.5:7b"),
+    MOCK_GMAIL: z.enum(["true", "false"]).default("false"),
   },
   client: {
     NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
@@ -39,6 +45,10 @@ export const env = createEnv({
     STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
     STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
     STRIPE_PRICE_ID: process.env.STRIPE_PRICE_ID,
+    AI_PROVIDER: process.env.AI_PROVIDER,
+    OLLAMA_BASE_URL: process.env.OLLAMA_BASE_URL,
+    OLLAMA_MODEL: process.env.OLLAMA_MODEL,
+    MOCK_GMAIL: process.env.MOCK_GMAIL,
   },
   skipValidation: !!process.env.SKIP_ENV_VALIDATION,
   emptyStringAsUndefined: true,

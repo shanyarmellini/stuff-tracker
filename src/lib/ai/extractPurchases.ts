@@ -1,4 +1,6 @@
+import { env } from "~/env";
 import { createAnthropicClient } from "~/lib/ai/anthropic";
+import { callOllamaForPurchases } from "~/lib/ai/ollama";
 
 export type CandidateEmail = {
   id: string;
@@ -98,6 +100,27 @@ export type ExtractPurchasesResult = {
   truncated: boolean;
 };
 
+async function callAnthropicForPurchases(
+  userMessage: string,
+  tool: ReturnType<typeof buildRecordPurchasesTool>,
+): Promise<ToolOutput> {
+  const client = createAnthropicClient();
+  const response = await client.messages.create({
+    model: "claude-haiku-4-5",
+    max_tokens: 8192,
+    tools: [tool],
+    tool_choice: { type: "tool", name: tool.name },
+    messages: [{ role: "user", content: userMessage }],
+  });
+
+  const toolUse = response.content.find(
+    (block) => block.type === "tool_use" && block.name === tool.name,
+  );
+  if (toolUse?.type !== "tool_use") return { items: [] };
+
+  return toolUse.input as ToolOutput;
+}
+
 export async function extractPurchasesFromEmails(
   emails: CandidateEmail[],
   maxItemsPerEmail = 20,
@@ -105,33 +128,19 @@ export async function extractPurchasesFromEmails(
 ): Promise<ExtractPurchasesResult> {
   if (emails.length === 0) return { items: [], truncated: false };
 
-  const client = createAnthropicClient();
+  const tool = buildRecordPurchasesTool(existingCategories);
   const prompt = emails
     .map(
       (email) =>
         `<email id="${email.id}">\nFrom: ${email.from}\nSubject: ${email.subject}\n\n${email.bodyText.slice(0, 12000)}\n</email>`,
     )
     .join("\n\n");
+  const userMessage = `Here are ${emails.length} emails from a user's inbox. Find every product purchase.\n\n${prompt}`;
 
-  const response = await client.messages.create({
-    model: "claude-haiku-4-5",
-    max_tokens: 8192,
-    tools: [buildRecordPurchasesTool(existingCategories)],
-    tool_choice: { type: "tool", name: "record_purchases" },
-    messages: [
-      {
-        role: "user",
-        content: `Here are ${emails.length} emails from a user's inbox. Find every product purchase.\n\n${prompt}`,
-      },
-    ],
-  });
-
-  const toolUse = response.content.find(
-    (block) => block.type === "tool_use" && block.name === "record_purchases",
-  );
-  if (toolUse?.type !== "tool_use") return { items: [], truncated: false };
-
-  const output = toolUse.input as ToolOutput;
+  const output: ToolOutput =
+    env.AI_PROVIDER === "ollama"
+      ? await callOllamaForPurchases<ToolOutput>(userMessage, tool)
+      : await callAnthropicForPurchases(userMessage, tool);
   const imageByEmailId = new Map(emails.map((e) => [e.id, e.imageUrl]));
   const bodyTextByEmailId = new Map(emails.map((e) => [e.id, e.bodyText]));
   const items = Array.isArray(output.items) ? output.items : [];
