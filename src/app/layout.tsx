@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { Inter, Patrick_Hand_SC, Poppins } from "next/font/google";
 import { Navbar } from "~/components/navbar";
 import { SettingsEffects } from "~/components/settings-effects";
-import { createClient } from "~/lib/supabase/server";
-import { ThemeProvider } from "./theme-provider";
+import { env } from "~/env";
+import { getCurrentUser } from "~/lib/supabase/server";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
@@ -31,21 +31,16 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en">
       <body
         className={`${inter.variable} ${patrickHandSC.variable} ${poppins.variable} font-sans`}
       >
-        <ThemeProvider>
-          <SettingsEffects />
-          <Navbar user={user} />
-          {children}
-        </ThemeProvider>
+        <SettingsEffects />
+        <Navbar user={user} isDev={env.NODE_ENV !== "production"} />
+        {children}
       </body>
     </html>
   );
