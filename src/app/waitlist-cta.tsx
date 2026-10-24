@@ -40,7 +40,7 @@ export function WaitlistCta() {
 
   if (status === "done") {
     return (
-      <p className="mt-2 font-ui text-base text-slate-600">
+      <p className="mt-2 font-ui text-base text-muted-foreground">
         You&apos;re on the list! We&apos;ll email you when it&apos;s your turn.
       </p>
     );
@@ -58,7 +58,7 @@ export function WaitlistCta() {
           placeholder="Your name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="bg-white"
+          className="bg-card"
         />
         <Input
           type="email"
@@ -66,7 +66,7 @@ export function WaitlistCta() {
           placeholder="you@example.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="bg-white"
+          className="bg-card"
         />
       </div>
       <Button

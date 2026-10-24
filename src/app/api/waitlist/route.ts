@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { jsonError } from "~/lib/api";
 import { createClient } from "~/lib/supabase/server";
+
+const UNIQUE_VIOLATION = "23505";
 
 const bodySchema = z.object({
   name: z.string().trim().min(1),
@@ -8,26 +11,16 @@ const bodySchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const parsed = bodySchema.safeParse(await request.json());
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Enter a valid email address." },
-      { status: 400 },
-    );
-  }
+  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return jsonError("Enter a valid email address.", 400);
 
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("waitlist")
-    .insert({ name: parsed.data.name, email: parsed.data.email });
+  const { error } = await supabase.from("waitlist").insert(parsed.data);
 
-  if (error && error.code !== "23505") {
+  // Already on the list counts as success.
+  if (error && error.code !== UNIQUE_VIOLATION) {
     console.error("Failed to add email to waitlist:", error.message);
-    return NextResponse.json(
-      { error: "Something went wrong. Please try again." },
-      { status: 500 },
-    );
+    return jsonError("Something went wrong. Please try again.", 500);
   }
-
   return NextResponse.json({ ok: true });
 }
