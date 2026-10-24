@@ -1,7 +1,11 @@
 // Read-only rendition of the dashboard's item card, for the admin view.
-// Deliberately dumbed down from the dashboard version (src/app/dashboard/page.tsx)
+// Deliberately dumbed down from the dashboard version (src/app/dashboard/_components/item-card.tsx)
 // - no edit/delete/drag/broken-photo-fallback - this is just a preview of
 // what the user sees, not an editable surface.
+
+import { ExternalLinkIcon } from "~/components/icons";
+import { formatPrice } from "~/lib/format";
+import { linkHostname, normalizeUrl } from "~/lib/url";
 
 export type AdminCardItem = {
   name: string;
@@ -12,51 +16,19 @@ export type AdminCardItem = {
   quantity: number;
 };
 
-function ExternalLinkIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="10"
-      height="10"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M15 3h6v6" />
-      <path d="M10 14 21 3" />
-      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-    </svg>
-  );
-}
-
-function linkHostname(url: string | null): string | null {
-  if (!url) return null;
-  try {
-    return new URL(
-      url.startsWith("http") ? url : `https://${url}`,
-    ).hostname.replace("www.", "");
-  } catch {
-    return url;
-  }
-}
-
 export function ItemCardPreview({ item }: { item: AdminCardItem }) {
   const hostname = linkHostname(item.link);
 
   return (
-    <div className="w-56 rounded-2xl border border-sky-100 bg-white p-3 shadow-sm">
-      <p className="line-clamp-2 font-display text-2xl leading-tight tracking-wide text-slate-800">
+    <div className="w-56 rounded-2xl border border-border bg-card p-3 shadow-sm">
+      <p className="line-clamp-2 font-display text-2xl leading-tight tracking-wide text-foreground">
         {item.name}
         {item.quantity > 1 && (
-          <span className="text-slate-400"> ×{item.quantity}</span>
+          <span className="text-subtle-foreground"> ×{item.quantity}</span>
         )}
       </p>
 
-      <div className="relative my-2 flex h-32 items-center justify-center overflow-hidden rounded-xl bg-sky-50">
+      <div className="relative my-2 flex h-32 items-center justify-center overflow-hidden rounded-xl bg-muted">
         {item.photo_url ? (
           // biome-ignore lint/performance/noImgElement: photo_url can be an arbitrary external URL
           <img
@@ -65,22 +37,22 @@ export function ItemCardPreview({ item }: { item: AdminCardItem }) {
             className="h-full w-full object-contain"
           />
         ) : (
-          <span className="text-4xl text-slate-300">{item.emoji ?? "📦"}</span>
+          <span className="text-4xl text-subtle-foreground">
+            {item.emoji ?? "📦"}
+          </span>
         )}
       </div>
 
       <div>
-        <p className="truncate font-ui text-base font-semibold text-slate-700">
-          ${item.price.toFixed(2)}
+        <p className="truncate font-ui text-base font-semibold text-foreground">
+          {formatPrice(item.price)}
         </p>
         {hostname && item.link && (
           <a
-            href={
-              item.link.startsWith("http") ? item.link : `https://${item.link}`
-            }
+            href={normalizeUrl(item.link)}
             target="_blank"
             rel="noreferrer"
-            className="flex min-w-0 items-center gap-1 font-ui text-xs text-sky-400 transition-colors hover:text-sky-500"
+            className="flex min-w-0 items-center gap-1 font-ui text-xs text-brand transition-colors hover:text-brand-strong"
           >
             <span className="truncate">{hostname}</span>
             <ExternalLinkIcon />
