@@ -1,65 +1,62 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { getPostHogClient } from "~/lib/posthog-server";
+import { z } from "zod";
+import { captureServerEvent } from "~/lib/posthog-server";
 import { createClient } from "~/lib/supabase/server";
 
-export async function login(formData: FormData) {
-  const supabase = await createClient();
+const credentialsSchema = z.object({
+  email: z.string().trim().min(1),
+  password: z.string().min(1),
+});
 
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: formData.get("email") as string,
-    password: formData.get("password") as string,
+type AuthMode = { page: string; event: string };
+const LOGIN: AuthMode = { page: "/auth/login", event: "user_logged_in" };
+const SIGNUP: AuthMode = { page: "/auth/signup", event: "user_signed_up" };
+
+function redirectWithError(page: string, message: string): never {
+  redirect(`${page}?error=${encodeURIComponent(message)}`);
+}
+
+async function authenticate(formData: FormData, mode: AuthMode) {
+  const parsed = credentialsSchema.safeParse({
+    email: formData.get("email"),
+    password: formData.get("password"),
   });
-
-  if (error) {
-    redirect(`/auth/login?error=${encodeURIComponent(error.message)}`);
+  if (!parsed.success) {
+    redirectWithError(mode.page, "Enter your email and password.");
   }
+
+  const supabase = await createClient();
+  const { data, error } =
+    mode === LOGIN
+      ? await supabase.auth.signInWithPassword(parsed.data)
+      : await supabase.auth.signUp(parsed.data);
+  if (error) redirectWithError(mode.page, error.message);
 
   if (data.user) {
-    const posthog = getPostHogClient();
-    posthog.identify({
+    await captureServerEvent({
       distinctId: data.user.id,
-      properties: { email: data.user.email },
-    });
-    posthog.capture({
-      distinctId: data.user.id,
-      event: "user_logged_in",
+      event: mode.event,
       properties: { method: "email" },
+      identify: { email: data.user.email },
     });
-    await posthog.flush();
   }
-
+  if (mode === SIGNUP && !data.session) {
+    // Email confirmation is required before the user can sign in.
+    redirect(
+      `/auth/login?message=${encodeURIComponent("Check your email to confirm your account")}`,
+    );
+  }
   redirect("/dashboard");
 }
 
+export async function login(formData: FormData) {
+  await authenticate(formData, LOGIN);
+}
+
 export async function signup(formData: FormData) {
-  const supabase = await createClient();
-
-  const { data, error } = await supabase.auth.signUp({
-    email: formData.get("email") as string,
-    password: formData.get("password") as string,
-  });
-
-  if (error) {
-    redirect(`/auth/signup?error=${encodeURIComponent(error.message)}`);
-  }
-
-  if (data.user) {
-    const posthog = getPostHogClient();
-    posthog.identify({
-      distinctId: data.user.id,
-      properties: { email: data.user.email },
-    });
-    posthog.capture({
-      distinctId: data.user.id,
-      event: "user_signed_up",
-      properties: { method: "email" },
-    });
-    await posthog.flush();
-  }
-
-  redirect("/dashboard");
+  await authenticate(formData, SIGNUP);
 }
 
 export async function signout() {
