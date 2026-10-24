@@ -21,3 +21,7 @@ export const FIELD_INPUT_CLASS =
 /** Full-width brand submit button. */
 export const SUBMIT_BUTTON_CLASS =
   "mt-2 w-full rounded-xl bg-brand py-3 font-ui text-sm font-medium text-brand-foreground shadow-sm transition-colors hover:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-60";
+
+/** Full-width destructive card button (log out, delete account). */
+export const DANGER_CARD_BUTTON_CLASS =
+  "w-full rounded-2xl border border-destructive/30 bg-card p-4 text-center font-ui text-sm text-destructive shadow-sm transition-colors hover:bg-destructive/10";

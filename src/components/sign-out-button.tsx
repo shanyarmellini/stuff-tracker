@@ -1,10 +1,11 @@
 import type { ReactNode } from "react";
 import { signout } from "~/app/auth/actions";
+import { DANGER_CARD_BUTTON_CLASS } from "~/components/class-names";
 import { buttonVariants } from "~/components/ui/button";
 
 const VARIANT_CLASSES = {
   nav: buttonVariants({ variant: "outline", size: "sm" }),
-  card: "w-full rounded-2xl border border-destructive/30 bg-card p-4 text-center font-ui text-sm text-destructive shadow-sm transition-colors hover:bg-destructive/10",
+  card: DANGER_CARD_BUTTON_CLASS,
 };
 
 export function SignOutButton({
