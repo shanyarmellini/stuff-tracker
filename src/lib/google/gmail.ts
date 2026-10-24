@@ -1,4 +1,5 @@
 import { type gmail_v1, google } from "googleapis";
+import type { PurchaseCandidateEmail } from "~/lib/ai/extractPurchases";
 import { extractFirstImageUrl, stripHtml } from "~/lib/email/html";
 import { createGoogleOAuthClient } from "~/lib/google/oauth";
 import { createAdminClient } from "~/lib/supabase/admin";
@@ -30,10 +31,7 @@ async function loadConnection(
   return data;
 }
 
-async function getAuthorizedClient(
-  userId: string,
-  connection: StoredConnection,
-) {
+async function getGmailClient(userId: string, connection: StoredConnection) {
   const oauthClient = createGoogleOAuthClient();
   oauthClient.setCredentials({
     refresh_token: connection.refresh_token,
@@ -63,7 +61,7 @@ async function getAuthorizedClient(
       .eq("user_id", userId);
   }
 
-  return oauthClient;
+  return google.gmail({ version: "v1", auth: oauthClient });
 }
 
 function headerValue(
@@ -76,76 +74,65 @@ function headerValue(
   );
 }
 
-export type GmailConnection = {
+/** Lists messages matching `params`, then fetches each one's details. */
+async function listMessages(
+  gmail: gmail_v1.Gmail,
+  params: gmail_v1.Params$Resource$Users$Messages$List,
+  getParams: Omit<gmail_v1.Params$Resource$Users$Messages$Get, "id">,
+) {
+  const { data: list } = await gmail.users.messages.list({
+    userId: "me",
+    ...params,
+  });
+  const ids = (list.messages ?? [])
+    .map((message) => message.id)
+    .filter((id): id is string => !!id);
+  const details = await Promise.all(
+    ids.map((id) =>
+      gmail.users.messages.get({ userId: "me", id, ...getParams }),
+    ),
+  );
+  return {
+    messages: details.map((res) => res.data),
+    nextPageToken: list.nextPageToken ?? null,
+  };
+}
+
+type RecentGmailMessages = {
   email: string | null;
   messages: GmailMessage[];
   nextPageToken: string | null;
 };
 
-export async function getGmailConnection(
+/** Lists the user's most recent Gmail messages, or null if not connected. */
+export async function listRecentGmailMessages(
   userId: string,
   { limit = 10, pageToken }: { limit?: number; pageToken?: string } = {},
-): Promise<GmailConnection | null> {
+): Promise<RecentGmailMessages | null> {
   const connection = await loadConnection(userId);
   if (!connection) return null;
 
-  const { messages, nextPageToken } = await getRecentEmails(
-    userId,
-    connection,
-    { limit, pageToken },
+  const gmail = await getGmailClient(userId, connection);
+  const { messages, nextPageToken } = await listMessages(
+    gmail,
+    { maxResults: limit, pageToken },
+    { format: "metadata", metadataHeaders: ["From", "Subject", "Date"] },
   );
-  return { email: connection.email, messages, nextPageToken };
-}
-
-async function getRecentEmails(
-  userId: string,
-  connection: StoredConnection,
-  { limit = 10, pageToken }: { limit?: number; pageToken?: string } = {},
-): Promise<{ messages: GmailMessage[]; nextPageToken: string | null }> {
-  const oauthClient = await getAuthorizedClient(userId, connection);
-  const gmail = google.gmail({ version: "v1", auth: oauthClient });
-
-  const { data: list } = await gmail.users.messages.list({
-    userId: "me",
-    maxResults: limit,
-    pageToken,
-  });
-
-  const ids = (list.messages ?? [])
-    .map((message) => message.id)
-    .filter((id): id is string => !!id);
-
-  const details = await Promise.all(
-    ids.map((id) =>
-      gmail.users.messages.get({
-        userId: "me",
-        id,
-        format: "metadata",
-        metadataHeaders: ["From", "Subject", "Date"],
-      }),
-    ),
-  );
-
   return {
-    messages: details.map((res) => ({
-      id: res.data.id ?? "",
-      from: headerValue(res.data.payload?.headers, "From"),
-      subject: headerValue(res.data.payload?.headers, "Subject"),
-      snippet: res.data.snippet ?? "",
-      date: headerValue(res.data.payload?.headers, "Date"),
+    email: connection.email,
+    messages: messages.map((message) => ({
+      id: message.id ?? "",
+      from: headerValue(message.payload?.headers, "From"),
+      subject: headerValue(message.payload?.headers, "Subject"),
+      snippet: message.snippet ?? "",
+      date: headerValue(message.payload?.headers, "Date"),
     })),
-    nextPageToken: list.nextPageToken ?? null,
+    nextPageToken,
   };
 }
 
-export type PurchaseCandidateEmail = {
-  id: string;
-  from: string;
-  subject: string;
-  bodyText: string;
-  imageUrl: string | null;
-};
-
+// Narrower than the IMAP query in gmail-app-password.ts: this path has no
+// code-side marketing filter, so every match goes straight to the AI.
 const PURCHASE_EMAIL_QUERY =
   '(receipt OR invoice OR "order confirmation" OR "your order" OR "order has shipped" OR "thanks for your order")';
 
@@ -182,42 +169,27 @@ export async function findPurchaseCandidateEmails(
   const connection = await loadConnection(userId);
   if (!connection) return null;
 
-  const oauthClient = await getAuthorizedClient(userId, connection);
-  const gmail = google.gmail({ version: "v1", auth: oauthClient });
-
+  const gmail = await getGmailClient(userId, connection);
   const query = since
     ? `${PURCHASE_EMAIL_QUERY} after:${Math.floor(since.getTime() / 1000)}`
     : `${PURCHASE_EMAIL_QUERY} newer_than:180d`;
-
-  const { data: list } = await gmail.users.messages.list({
-    userId: "me",
-    q: query,
-    maxResults: limit,
-  });
-
-  const ids = (list.messages ?? [])
-    .map((message) => message.id)
-    .filter((id): id is string => !!id);
-
-  const details = await Promise.all(
-    ids.map((id) =>
-      gmail.users.messages.get({ userId: "me", id, format: "full" }),
-    ),
+  const { messages } = await listMessages(
+    gmail,
+    { q: query, maxResults: limit },
+    { format: "full" },
   );
 
-  return details.map((res) => {
-    const html = findBodyPart(res.data.payload, "text/html");
-    const bodyText = html
-      ? stripHtml(html)
-      : (findBodyPart(res.data.payload, "text/plain") ??
-        res.data.snippet ??
-        "");
-
+  return messages.map((message) => {
+    const html = findBodyPart(message.payload, "text/html");
     return {
-      id: res.data.id ?? "",
-      from: headerValue(res.data.payload?.headers, "From"),
-      subject: headerValue(res.data.payload?.headers, "Subject"),
-      bodyText,
+      id: message.id ?? "",
+      from: headerValue(message.payload?.headers, "From"),
+      subject: headerValue(message.payload?.headers, "Subject"),
+      bodyText: html
+        ? stripHtml(html)
+        : (findBodyPart(message.payload, "text/plain") ??
+          message.snippet ??
+          ""),
       imageUrl: html ? extractFirstImageUrl(html) : null,
     };
   });
