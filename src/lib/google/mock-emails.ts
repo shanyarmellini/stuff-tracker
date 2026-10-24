@@ -1,12 +1,10 @@
-import type { PurchaseCandidateEmail } from "~/lib/google/gmail-app-password";
+import { env } from "~/env";
+import type { PurchaseCandidateEmail } from "~/lib/ai/extractPurchases";
 
-/**
- * Canned purchase emails used when MOCK_GMAIL=true, in place of a real IMAP
- * scan. Deliberately covers the edge cases the extraction prompt already
- * handles (a pre-discount price, multiple items in one order, an explicit
- * quantity, a recurring subscription, a non-product transportation charge)
- * so this mode is useful for testing extraction quality, not just plumbing.
- */
+export const MOCK_GMAIL_ENABLED =
+  env.MOCK_GMAIL === "true" && env.NODE_ENV !== "production";
+
+//test emails to make sure everything is working well
 export const MOCK_CANDIDATE_EMAILS: PurchaseCandidateEmail[] = [
   {
     id: "mock-amazon-order-1",
