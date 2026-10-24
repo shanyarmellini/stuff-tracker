@@ -9,7 +9,7 @@ const noopPostHogClient: PostHogLike = {
   flush: async () => {},
 };
 
-export function getPostHogClient(): PostHogLike {
+function getPostHogClient(): PostHogLike {
   if (!env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN || !env.NEXT_PUBLIC_POSTHOG_HOST) {
     return noopPostHogClient;
   }
@@ -18,4 +18,24 @@ export function getPostHogClient(): PostHogLike {
     flushAt: 1,
     flushInterval: 0,
   });
+}
+
+type ServerEvent = {
+  distinctId: string;
+  event: string;
+  properties?: Record<string, unknown>;
+  /** Person properties to set via identify before capturing. */
+  identify?: Record<string, unknown>;
+};
+
+export async function captureServerEvent({
+  distinctId,
+  event,
+  properties,
+  identify,
+}: ServerEvent) {
+  const posthog = getPostHogClient();
+  if (identify) posthog.identify({ distinctId, properties: identify });
+  posthog.capture({ distinctId, event, properties });
+  await posthog.flush();
 }
