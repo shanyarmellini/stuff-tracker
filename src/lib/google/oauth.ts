@@ -11,3 +11,7 @@ export function createGoogleOAuthClient() {
     env.GOOGLE_OAUTH_REDIRECT_URI,
   );
 }
+
+/** CSRF protection for the Gmail OAuth round trip (see api/google/*). */
+export const GMAIL_OAUTH_STATE_COOKIE = "gmail_oauth_state";
+export const GMAIL_OAUTH_STATE_MAX_AGE_SECONDS = 10 * 60;
