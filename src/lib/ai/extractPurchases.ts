@@ -1,8 +1,14 @@
+import { z } from "zod";
 import { env } from "~/env";
 import { createAnthropicClient } from "~/lib/ai/anthropic";
 import { callOllamaForPurchases } from "~/lib/ai/ollama";
 
-export type CandidateEmail = {
+const ANTHROPIC_MODEL = "claude-haiku-4-5";
+const MAX_OUTPUT_TOKENS = 8192;
+const MAX_EMAIL_BODY_CHARS = 12000;
+export const MAX_ITEMS_PER_EMAIL = 20;
+
+export type PurchaseCandidateEmail = {
   id: string;
   from: string;
   subject: string;
@@ -82,137 +88,131 @@ function buildRecordPurchasesTool(existingCategories: string[]) {
   };
 }
 
-type ToolOutput = {
-  items: {
-    email_id: string;
-    name: string;
-    price: number;
-    merchant: string;
-    link?: string;
-    category: string;
-    image_url?: string;
-    quantity?: number;
-  }[];
-};
+// Model output is untrusted: each item is validated on its own so one
+// malformed entry is dropped instead of failing the whole batch.
+const toolItemSchema = z.object({
+  email_id: z.string(),
+  name: z.string().min(1),
+  price: z.coerce.number().positive(),
+  merchant: z.string().catch(""),
+  link: z.string().nullish().catch(null),
+  category: z.string().min(1).catch("Misc"),
+  image_url: z.string().nullish().catch(null),
+  quantity: z.number().int().positive().catch(1),
+});
+type ToolItem = z.infer<typeof toolItemSchema>;
 
-export type ExtractPurchasesResult = {
-  items: ExtractedPurchase[];
-  truncated: boolean;
-};
+function parseToolItems(output: unknown): ToolItem[] {
+  const parsed = z.object({ items: z.array(z.unknown()) }).safeParse(output);
+  if (!parsed.success) return [];
+  return parsed.data.items.flatMap((item) => {
+    const result = toolItemSchema.safeParse(item);
+    return result.success ? [result.data] : [];
+  });
+}
 
 async function callAnthropicForPurchases(
   userMessage: string,
   tool: ReturnType<typeof buildRecordPurchasesTool>,
-): Promise<ToolOutput> {
-  const client = createAnthropicClient();
-  const response = await client.messages.create({
-    model: "claude-haiku-4-5",
-    max_tokens: 8192,
+): Promise<unknown> {
+  const response = await createAnthropicClient().messages.create({
+    model: ANTHROPIC_MODEL,
+    max_tokens: MAX_OUTPUT_TOKENS,
     tools: [tool],
     tool_choice: { type: "tool", name: tool.name },
     messages: [{ role: "user", content: userMessage }],
   });
-
   const toolUse = response.content.find(
     (block) => block.type === "tool_use" && block.name === tool.name,
   );
-  if (toolUse?.type !== "tool_use") return { items: [] };
+  return toolUse?.type === "tool_use" ? toolUse.input : null;
+}
 
-  return toolUse.input as ToolOutput;
+function buildUserMessage(emails: PurchaseCandidateEmail[]): string {
+  const emailBlocks = emails
+    .map(
+      (email) =>
+        `<email id="${email.id}">\nFrom: ${email.from}\nSubject: ${email.subject}\n\n${email.bodyText.slice(0, MAX_EMAIL_BODY_CHARS)}\n</email>`,
+    )
+    .join("\n\n");
+  return `Here are ${emails.length} emails from a user's inbox. Find every product purchase.\n\n${emailBlocks}`;
+}
+
+function toExtractedPurchase(
+  item: ToolItem,
+  email: PurchaseCandidateEmail,
+  isOnlyItemInEmail: boolean,
+): ExtractedPurchase {
+  // Only trust the AI's per-item image_url if it genuinely appears in that
+  // email's source text - otherwise fall back to the email's single best
+  // image, but only when the email has just one item: with multiple items,
+  // that "best" image is a per-email guess, so reusing it across items would
+  // show the same (possibly unrelated) photo on more than one card.
+  const itemImage =
+    item.image_url && email.bodyText.includes(item.image_url)
+      ? item.image_url
+      : null;
+  return {
+    emailId: item.email_id,
+    name: item.name,
+    price: item.price,
+    merchant: item.merchant,
+    link: item.link ?? null,
+    category: item.category,
+    imageUrl: itemImage ?? (isOnlyItemInEmail ? email.imageUrl : null),
+    quantity: item.quantity,
+  };
+}
+
+// Some order confirmations list the exact same product as separate line
+// items instead of one line with a quantity. As a safety net against the AI
+// still splitting a genuine duplicate, merge same name+price items within one
+// email by summing quantities - dropping the extras would undercount.
+function mergeDuplicates(items: ExtractedPurchase[]): ExtractedPurchase[] {
+  const byKey = new Map<string, ExtractedPurchase>();
+  for (const item of items) {
+    const key = `${item.emailId}|${item.name.toLowerCase().trim()}|${item.price}`;
+    const existing = byKey.get(key);
+    if (existing) existing.quantity += item.quantity;
+    else byKey.set(key, item);
+  }
+  return [...byKey.values()];
 }
 
 export async function extractPurchasesFromEmails(
-  emails: CandidateEmail[],
-  maxItemsPerEmail = 20,
+  emails: PurchaseCandidateEmail[],
   existingCategories: string[] = [],
-): Promise<ExtractPurchasesResult> {
+): Promise<{ items: ExtractedPurchase[]; truncated: boolean }> {
   if (emails.length === 0) return { items: [], truncated: false };
 
   const tool = buildRecordPurchasesTool(existingCategories);
-  const prompt = emails
-    .map(
-      (email) =>
-        `<email id="${email.id}">\nFrom: ${email.from}\nSubject: ${email.subject}\n\n${email.bodyText.slice(0, 12000)}\n</email>`,
-    )
-    .join("\n\n");
-  const userMessage = `Here are ${emails.length} emails from a user's inbox. Find every product purchase.\n\n${prompt}`;
-
-  const output: ToolOutput =
+  const userMessage = buildUserMessage(emails);
+  const output =
     env.AI_PROVIDER === "ollama"
-      ? await callOllamaForPurchases<ToolOutput>(userMessage, tool)
+      ? await callOllamaForPurchases(userMessage, tool)
       : await callAnthropicForPurchases(userMessage, tool);
-  const imageByEmailId = new Map(emails.map((e) => [e.id, e.imageUrl]));
-  const bodyTextByEmailId = new Map(emails.map((e) => [e.id, e.bodyText]));
-  const items = Array.isArray(output.items) ? output.items : [];
 
-  const seen = new Map<string, number>();
-  const countByEmailId = new Map<string, number>();
-  let truncated = false;
+  const emailsById = new Map(emails.map((email) => [email.id, email]));
+  const valid = parseToolItems(output).filter((item) =>
+    emailsById.has(item.email_id),
+  );
 
-  const finalItems = items
-    .filter(
-      (item) =>
-        item.name && item.price > 0 && imageByEmailId.has(item.email_id),
-    )
-    .filter((item) => {
-      const count = countByEmailId.get(item.email_id) ?? 0;
-      countByEmailId.set(item.email_id, count + 1);
-      if (count >= maxItemsPerEmail) {
-        truncated = true;
-        return false;
-      }
-      return true;
-    })
-    .map((item) => {
-      // Only trust the AI's per-item image_url if it's a marker that
-      // genuinely appears in that email's source text - otherwise fall back
-      // to the email's single best image, but only when the email has just
-      // one item: with multiple items, that single "best" image is a
-      // per-email guess, so reusing it across items would show the same
-      // (possibly unrelated) photo on more than one card.
-      const bodyText = bodyTextByEmailId.get(item.email_id) ?? "";
-      const itemImage =
-        item.image_url && bodyText.includes(item.image_url)
-          ? item.image_url
-          : null;
-      const isOnlyItemInEmail = countByEmailId.get(item.email_id) === 1;
-      const quantity =
-        Number.isInteger(item.quantity) && (item.quantity ?? 0) > 0
-          ? (item.quantity as number)
-          : 1;
-      return {
-        emailId: item.email_id,
-        name: item.name,
-        price: item.price,
-        merchant: item.merchant,
-        link: item.link ?? null,
-        category: item.category || "Misc",
-        imageUrl:
-          itemImage ??
-          (isOnlyItemInEmail ? imageByEmailId.get(item.email_id) : null) ??
-          null,
-        quantity,
-      };
-    })
-    .reduce<ExtractedPurchase[]>((merged, item) => {
-      // Some order confirmations list the exact same product as two or more
-      // separate line items (e.g. split across order lines) instead of one
-      // line with a quantity. The AI is asked to report an accurate quantity
-      // per item, but as a safety net against it still splitting a genuine
-      // duplicate into separate entries, merge same name+price items within
-      // one email by summing their quantities rather than dropping the
-      // extras - that would silently undercount how many were bought.
-      const key = `${item.emailId}|${item.name.toLowerCase().trim()}|${item.price}`;
-      const existingIndex = seen.get(key);
-      if (existingIndex !== undefined) {
-        const existing = merged[existingIndex];
-        if (existing) existing.quantity += item.quantity;
-        return merged;
-      }
-      seen.set(key, merged.length);
-      merged.push(item);
-      return merged;
-    }, []);
+  const totalByEmailId = new Map<string, number>();
+  const capped = valid.filter((item) => {
+    const count = (totalByEmailId.get(item.email_id) ?? 0) + 1;
+    totalByEmailId.set(item.email_id, count);
+    return count <= MAX_ITEMS_PER_EMAIL;
+  });
 
-  return { items: finalItems, truncated };
+  const items = capped.map((item) =>
+    toExtractedPurchase(
+      item,
+      emailsById.get(item.email_id) as PurchaseCandidateEmail,
+      totalByEmailId.get(item.email_id) === 1,
+    ),
+  );
+  return {
+    items: mergeDuplicates(items),
+    truncated: capped.length < valid.length,
+  };
 }
