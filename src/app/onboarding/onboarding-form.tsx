@@ -1,8 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import {
+  FIELD_INPUT_CLASS,
+  FIELD_LABEL_CLASS,
+  ONBOARDING_CARD_CLASS,
+  ONBOARDING_TITLE_CLASS,
+  SUBMIT_BUTTON_CLASS,
+} from "~/components/class-names";
 import { cn } from "~/lib/utils";
 import { saveOnboarding } from "./actions";
+import { MAX_AGE, MIN_AGE } from "./constants";
 
 type ValidationError = {
   itemTypes?: string;
@@ -24,6 +32,7 @@ const ITEM_TYPES = [
 ];
 
 const MAX_ITEM_TYPES = 20;
+const MAX_OTHER_LENGTH = 30;
 
 const GENDERS = ["Woman", "Man", "Non-binary", "Prefer not to say"];
 
@@ -42,8 +51,15 @@ const MONTH_NAMES = [
   "November",
   "December",
 ];
-const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
-const YEARS = Array.from({ length: 121 }, (_, i) => CURRENT_YEAR - i);
+const MONTH_OPTIONS = MONTH_NAMES.map((label, i) => ({ value: i + 1, label }));
+const DAY_OPTIONS = Array.from({ length: 31 }, (_, i) => ({
+  value: i + 1,
+  label: String(i + 1).padStart(2, "0"),
+}));
+const YEAR_OPTIONS = Array.from({ length: MAX_AGE + 1 }, (_, i) => ({
+  value: CURRENT_YEAR - i,
+  label: String(CURRENT_YEAR - i),
+}));
 
 function calcAge(month: number, day: number, year: number): number {
   const today = new Date();
@@ -51,6 +67,64 @@ function calcAge(month: number, day: number, year: number): number {
   const monthDiff = today.getMonth() + 1 - month;
   if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < day)) age--;
   return age;
+}
+
+function ageRangeError(age: number): string | null {
+  if (age < MIN_AGE) return `You must be at least ${MIN_AGE} years old.`;
+  if (age > MAX_AGE) return `The maximum age is ${MAX_AGE}.`;
+  return null;
+}
+
+function pillClass(active: boolean, disabled: boolean) {
+  return cn(
+    "rounded-full border px-4 py-1.5 font-ui text-sm transition-colors",
+    active
+      ? "border-brand bg-brand text-brand-foreground"
+      : "border-input bg-card text-muted-foreground hover:border-brand hover:text-brand-strong",
+    disabled &&
+      "cursor-not-allowed opacity-40 hover:border-input hover:text-muted-foreground",
+  );
+}
+
+function DobSelect({
+  id,
+  label,
+  placeholder,
+  value,
+  onChange,
+  options,
+  className,
+}: {
+  id: string;
+  label: string;
+  placeholder: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: number; label: string }[];
+  className: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label htmlFor={id} className="font-ui text-xs text-subtle-foreground">
+        {label}
+      </label>
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={cn(FIELD_INPUT_CLASS, "px-3", className)}
+      >
+        <option value="" disabled>
+          {placeholder}
+        </option>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
 }
 
 export function OnboardingForm() {
@@ -84,12 +158,16 @@ export function OnboardingForm() {
     }
   }
 
-  function commitOtherItem() {
+  /** Adds the typed "Other" text as an item; returns the resulting list. */
+  function commitOtherItem(): string[] {
     const trimmed = otherText.trim();
-    if (trimmed && !otherItems.includes(trimmed) && !itemTypesMaxed) {
-      setOtherItems((prev) => [...prev, trimmed]);
-    }
     setOtherText("");
+    if (!trimmed || otherItems.includes(trimmed) || itemTypesMaxed) {
+      return otherItems;
+    }
+    const next = [...otherItems, trimmed];
+    setOtherItems(next);
+    return next;
   }
 
   function removeOtherItem(item: string) {
@@ -100,20 +178,15 @@ export function OnboardingForm() {
   const dobAge = dobComplete
     ? calcAge(Number(dobMonth), Number(dobDay), Number(dobYear))
     : null;
-  const dobTooYoung = dobAge !== null && dobAge < 13;
-  const dobTooOld = dobAge !== null && dobAge > 120;
+  // Range errors show live once the date is complete; the "incomplete" error
+  // only appears after a submit attempt.
+  const dobError = dobAge === null ? errors.age : ageRangeError(dobAge);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
 
-    const pendingOther = otherText.trim();
-    let finalOtherItems = otherItems;
-    if (pendingOther && !otherItems.includes(pendingOther) && !itemTypesMaxed) {
-      finalOtherItems = [...otherItems, pendingOther];
-      setOtherItems(finalOtherItems);
-      setOtherText("");
-    }
+    const finalOtherItems = commitOtherItem();
 
     const allItemTypes = selectedTypes.length + finalOtherItems.length;
     const gender = formData.get("gender") as string | null;
@@ -122,13 +195,11 @@ export function OnboardingForm() {
     if (allItemTypes === 0)
       newErrors.itemTypes = "Please select at least one item type.";
     if (!gender) newErrors.gender = "Please select how you identify.";
-    if (!dobComplete) {
-      newErrors.age = "Please enter your full date of birth.";
-    } else if (dobTooYoung) {
-      newErrors.age = "You must be at least 13 years old.";
-    } else if (dobTooOld) {
-      newErrors.age = "The maximum age is 120.";
-    }
+    const dobProblem =
+      dobAge === null
+        ? "Please enter your full date of birth."
+        : ageRangeError(dobAge);
+    if (dobProblem) newErrors.age = dobProblem;
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -144,11 +215,9 @@ export function OnboardingForm() {
   }
 
   return (
-    <div className="w-full max-w-lg rounded-3xl border border-sky-100 bg-white p-10 shadow-sm">
-      <h1 className="mb-1 font-display text-3xl tracking-wide text-slate-800">
-        Welcome!
-      </h1>
-      <p className="mb-8 font-ui text-sm text-slate-400">
+    <div className={ONBOARDING_CARD_CLASS}>
+      <h1 className={ONBOARDING_TITLE_CLASS}>Welcome!</h1>
+      <p className="mb-8 font-ui text-sm text-subtle-foreground">
         Tell us a bit about yourself so we can tailor your experience.
       </p>
 
@@ -157,15 +226,14 @@ export function OnboardingForm() {
           <input key={type} type="hidden" name="item_types" value={type} />
         ))}
 
-        {/* Item types */}
         <div>
-          <p className="mb-3 font-ui text-sm font-medium text-slate-700">
+          <p className="mb-3 font-ui text-sm font-medium text-foreground">
             What kind of items do you usually buy?
-            <span className="ml-1 font-normal text-slate-400">
+            <span className="ml-1 font-normal text-subtle-foreground">
               (pick all that apply)
             </span>
             <br />
-            <span className="font-normal text-slate-400">
+            <span className="font-normal text-subtle-foreground">
               Max {MAX_ITEM_TYPES} categories
             </span>
           </p>
@@ -179,14 +247,7 @@ export function OnboardingForm() {
                   type="button"
                   onClick={() => toggleType(type)}
                   disabled={disabled}
-                  className={cn(
-                    "rounded-full border px-4 py-1.5 font-ui text-sm transition-colors",
-                    active
-                      ? "border-sky-400 bg-sky-400 text-white"
-                      : "border-sky-200 bg-white text-slate-500 hover:border-sky-300 hover:text-sky-600",
-                    disabled &&
-                      "cursor-not-allowed opacity-40 hover:border-sky-200 hover:text-slate-500",
-                  )}
+                  className={pillClass(active, disabled)}
                 >
                   {type}
                 </button>
@@ -196,26 +257,18 @@ export function OnboardingForm() {
               type="button"
               onClick={toggleOther}
               disabled={!otherActive && itemTypesMaxed}
-              className={cn(
-                "rounded-full border px-4 py-1.5 font-ui text-sm transition-colors",
-                otherActive
-                  ? "border-sky-400 bg-sky-400 text-white"
-                  : "border-sky-200 bg-white text-slate-500 hover:border-sky-300 hover:text-sky-600",
-                !otherActive &&
-                  itemTypesMaxed &&
-                  "cursor-not-allowed opacity-40 hover:border-sky-200 hover:text-slate-500",
-              )}
+              className={pillClass(otherActive, !otherActive && itemTypesMaxed)}
             >
               Other
             </button>
           </div>
           {itemTypesMaxed && (
-            <p className="mt-2 font-ui text-xs text-slate-400">
+            <p className="mt-2 font-ui text-xs text-subtle-foreground">
               You&apos;ve reached the maximum of {MAX_ITEM_TYPES} categories.
             </p>
           )}
           {errors.itemTypes && (
-            <p className="mt-2 font-ui text-xs text-red-500">
+            <p className="mt-2 font-ui text-xs text-destructive">
               {errors.itemTypes}
             </p>
           )}
@@ -226,7 +279,7 @@ export function OnboardingForm() {
                   {otherItems.map((item) => (
                     <span
                       key={item}
-                      className="flex items-center gap-1.5 rounded-full border border-sky-400 bg-sky-400 px-3 py-1 font-ui text-sm text-white"
+                      className="flex items-center gap-1.5 rounded-full border border-brand bg-brand px-3 py-1 font-ui text-sm text-brand-foreground"
                     >
                       {item}
                       <button
@@ -241,16 +294,16 @@ export function OnboardingForm() {
                   ))}
                 </div>
               )}
-              {otherText.length >= 30 && (
-                <p className="mb-1 font-ui text-xs text-red-500">
-                  The 30 character limit has been reached.
+              {otherText.length >= MAX_OTHER_LENGTH && (
+                <p className="mb-1 font-ui text-xs text-destructive">
+                  The {MAX_OTHER_LENGTH} character limit has been reached.
                 </p>
               )}
               <div className="flex gap-2">
                 <input
                   type="text"
                   placeholder="e.g. Vintage clothing"
-                  maxLength={30}
+                  maxLength={MAX_OTHER_LENGTH}
                   value={otherText}
                   disabled={itemTypesMaxed}
                   onChange={(e) => setOtherText(e.target.value)}
@@ -260,13 +313,13 @@ export function OnboardingForm() {
                       commitOtherItem();
                     }
                   }}
-                  className="flex-1 rounded-xl border border-sky-100 bg-white px-4 py-2.5 font-ui text-sm text-slate-700 shadow-sm outline-none placeholder:text-slate-300 focus:border-sky-300 focus:ring-2 focus:ring-sky-100 transition-all disabled:cursor-not-allowed disabled:opacity-50"
+                  className={cn(FIELD_INPUT_CLASS, "flex-1 px-4")}
                 />
                 <button
                   type="button"
-                  onClick={commitOtherItem}
+                  onClick={() => commitOtherItem()}
                   disabled={itemTypesMaxed}
-                  className="rounded-xl border border-sky-200 bg-white px-4 py-2.5 font-ui text-sm text-slate-500 transition-colors hover:border-sky-300 hover:text-sky-600 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-sky-200 disabled:hover:text-slate-500"
+                  className="rounded-xl border border-input bg-card px-4 py-2.5 font-ui text-sm text-muted-foreground transition-colors hover:border-brand hover:text-brand-strong disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-input disabled:hover:text-muted-foreground"
                 >
                   Add
                 </button>
@@ -275,12 +328,8 @@ export function OnboardingForm() {
           )}
         </div>
 
-        {/* Gender */}
         <div>
-          <label
-            htmlFor="gender"
-            className="mb-3 block font-ui text-sm font-medium text-slate-700"
-          >
+          <label htmlFor="gender" className={FIELD_LABEL_CLASS}>
             How do you identify?
           </label>
           <div className="flex flex-wrap gap-2">
@@ -289,8 +338,8 @@ export function OnboardingForm() {
                 key={g}
                 className={cn(
                   "cursor-pointer rounded-full border px-4 py-1.5 font-ui text-sm transition-colors",
-                  "has-[:checked]:border-sky-400 has-[:checked]:bg-sky-400 has-[:checked]:text-white",
-                  "border-sky-200 bg-white text-slate-500 hover:border-sky-300 hover:text-sky-600",
+                  "has-[:checked]:border-brand has-[:checked]:bg-brand has-[:checked]:text-brand-foreground",
+                  "border-input bg-card text-muted-foreground hover:border-brand hover:text-brand-strong",
                 )}
               >
                 <input
@@ -304,105 +353,51 @@ export function OnboardingForm() {
             ))}
           </div>
           {errors.gender && (
-            <p className="mt-2 font-ui text-xs text-red-500">{errors.gender}</p>
+            <p className="mt-2 font-ui text-xs text-destructive">
+              {errors.gender}
+            </p>
           )}
         </div>
 
-        {/* Date of birth */}
         <div>
-          <p className="mb-3 font-ui text-sm font-medium text-slate-700">
+          <p className="mb-3 font-ui text-sm font-medium text-foreground">
             What is your date of birth?
           </p>
           <div className="flex gap-3">
-            <div className="flex flex-col gap-1">
-              <label
-                htmlFor="dob-month"
-                className="font-ui text-xs text-slate-400"
-              >
-                Month
-              </label>
-              <select
-                id="dob-month"
-                value={dobMonth}
-                onChange={(e) => setDobMonth(e.target.value)}
-                className="w-36 rounded-xl border border-sky-100 bg-white px-3 py-2.5 font-ui text-sm text-slate-700 shadow-sm outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-100 transition-all"
-              >
-                <option value="" disabled>
-                  MM
-                </option>
-                {MONTH_NAMES.map((name, i) => (
-                  <option key={name} value={i + 1}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <label
-                htmlFor="dob-day"
-                className="font-ui text-xs text-slate-400"
-              >
-                Day
-              </label>
-              <select
-                id="dob-day"
-                value={dobDay}
-                onChange={(e) => setDobDay(e.target.value)}
-                className="w-20 rounded-xl border border-sky-100 bg-white px-3 py-2.5 font-ui text-sm text-slate-700 shadow-sm outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-100 transition-all"
-              >
-                <option value="" disabled>
-                  DD
-                </option>
-                {DAYS.map((d) => (
-                  <option key={d} value={d}>
-                    {String(d).padStart(2, "0")}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <label
-                htmlFor="dob-year"
-                className="font-ui text-xs text-slate-400"
-              >
-                Year
-              </label>
-              <select
-                id="dob-year"
-                value={dobYear}
-                onChange={(e) => setDobYear(e.target.value)}
-                className="w-28 rounded-xl border border-sky-100 bg-white px-3 py-2.5 font-ui text-sm text-slate-700 shadow-sm outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-100 transition-all"
-              >
-                <option value="" disabled>
-                  YYYY
-                </option>
-                {YEARS.map((y) => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <DobSelect
+              id="dob-month"
+              label="Month"
+              placeholder="MM"
+              value={dobMonth}
+              onChange={setDobMonth}
+              options={MONTH_OPTIONS}
+              className="w-36"
+            />
+            <DobSelect
+              id="dob-day"
+              label="Day"
+              placeholder="DD"
+              value={dobDay}
+              onChange={setDobDay}
+              options={DAY_OPTIONS}
+              className="w-20"
+            />
+            <DobSelect
+              id="dob-year"
+              label="Year"
+              placeholder="YYYY"
+              value={dobYear}
+              onChange={setDobYear}
+              options={YEAR_OPTIONS}
+              className="w-28"
+            />
           </div>
-          {dobTooYoung && (
-            <p className="mt-2 font-ui text-xs text-red-500">
-              You must be at least 13 years old.
-            </p>
-          )}
-          {dobTooOld && (
-            <p className="mt-2 font-ui text-xs text-red-500">
-              The maximum age is 120.
-            </p>
-          )}
-          {errors.age && (
-            <p className="mt-2 font-ui text-xs text-red-500">{errors.age}</p>
+          {dobError && (
+            <p className="mt-2 font-ui text-xs text-destructive">{dobError}</p>
           )}
         </div>
 
-        <button
-          type="submit"
-          className="mt-2 w-full rounded-xl bg-sky-500 py-3 font-ui text-sm font-medium text-white shadow-sm transition-colors hover:bg-sky-600"
-        >
+        <button type="submit" className={SUBMIT_BUTTON_CLASS}>
           Get started
         </button>
       </form>
