@@ -1,26 +1,16 @@
 import { NextResponse } from "next/server";
+import { jsonError, requireUser } from "~/lib/api";
 import { createAdminClient } from "~/lib/supabase/admin";
-import { createClient } from "~/lib/supabase/server";
 
 export async function POST() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const auth = await requireUser();
+  if (auth instanceof NextResponse) return auth;
 
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const admin = createAdminClient();
-  const { error } = await admin
+  const { error } = await createAdminClient()
     .from("google_connections")
     .delete()
-    .eq("user_id", user.id);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+    .eq("user_id", auth.user.id);
+  if (error) return jsonError(error.message, 500);
 
   return NextResponse.json({ success: true });
 }

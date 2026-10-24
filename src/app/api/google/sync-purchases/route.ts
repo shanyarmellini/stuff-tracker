@@ -1,30 +1,26 @@
 import { NextResponse } from "next/server";
-import { extractPurchasesFromEmails } from "~/lib/ai/extractPurchases";
+import { jsonError, requireUser } from "~/lib/api";
 import { findPurchaseCandidateEmails } from "~/lib/google/gmail";
-import { insertExtractedPurchases } from "~/lib/items/insert-extracted-purchases";
-import { getPostHogClient } from "~/lib/posthog-server";
+import {
+  extractInBatches,
+  filterAlreadyImported,
+  insertExtractedPurchases,
+} from "~/lib/items/import-purchases";
+import { captureServerEvent } from "~/lib/posthog-server";
 import { createAdminClient } from "~/lib/supabase/admin";
-import { createClient } from "~/lib/supabase/server";
 
-const BATCH_SIZE = 8;
 const MAX_CANDIDATES_PER_SYNC = 20;
 
 export async function POST() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await requireUser();
+  if (auth instanceof NextResponse) return auth;
+  const { supabase, user } = auth;
 
   const { data: profile } = await supabase
     .from("profiles")
     .select("email_scan_consent, item_types")
     .eq("user_id", user.id)
     .single();
-
   if (!profile?.email_scan_consent) {
     return NextResponse.json({ added: 0, reason: "consent_required" });
   }
@@ -35,20 +31,14 @@ export async function POST() {
     .select("purchases_synced_at")
     .eq("user_id", user.id)
     .maybeSingle();
-
-  if (!connection) {
-    return NextResponse.json({ added: 0, reason: "not_connected" });
-  }
-
-  const since = connection.purchases_synced_at
-    ? new Date(connection.purchases_synced_at)
-    : undefined;
-
-  const candidates = await findPurchaseCandidateEmails(user.id, {
-    since,
-    limit: MAX_CANDIDATES_PER_SYNC,
-  });
-
+  const candidates =
+    connection &&
+    (await findPurchaseCandidateEmails(user.id, {
+      since: connection.purchases_synced_at
+        ? new Date(connection.purchases_synced_at)
+        : undefined,
+      limit: MAX_CANDIDATES_PER_SYNC,
+    }));
   if (!candidates) {
     return NextResponse.json({ added: 0, reason: "not_connected" });
   }
@@ -64,48 +54,28 @@ export async function POST() {
     return NextResponse.json({ added: 0 });
   }
 
-  const { data: existingRows } = await supabase
-    .from("items")
-    .select("gmail_message_id")
-    .eq("user_id", user.id)
-    .in(
-      "gmail_message_id",
-      candidates.map((c) => c.id),
+  const itemTypes: string[] = profile.item_types ?? [];
+  let added: number;
+  try {
+    const fresh = await filterAlreadyImported(supabase, user.id, candidates);
+    const extracted = await extractInBatches(fresh, itemTypes);
+    const insertedIds = await insertExtractedPurchases(
+      supabase,
+      user.id,
+      extracted,
+      itemTypes,
     );
-  const alreadyImported = new Set(
-    (existingRows ?? []).map((row) => row.gmail_message_id),
-  );
-  const fresh = candidates.filter((c) => !alreadyImported.has(c.id));
-
-  const extracted = [];
-  for (let i = 0; i < fresh.length; i += BATCH_SIZE) {
-    const { items } = await extractPurchasesFromEmails(
-      fresh.slice(i, i + BATCH_SIZE),
-      20,
-      profile.item_types ?? [],
-    );
-    extracted.push(...items);
+    added = insertedIds.length;
+  } catch (err) {
+    console.error("Gmail purchase sync failed:", err);
+    return jsonError("Failed to sync purchases.", 500);
   }
 
-  const { added } = await insertExtractedPurchases(
-    supabase,
-    user.id,
-    extracted,
-    profile.item_types ?? [],
-  );
-
   await markSynced();
-
-  const posthog = getPostHogClient();
-  posthog.capture({
+  await captureServerEvent({
     distinctId: user.id,
     event: "gmail_purchases_synced",
-    properties: {
-      items_added: added,
-      candidates_found: candidates.length,
-    },
+    properties: { items_added: added, candidates_found: candidates.length },
   });
-  await posthog.flush();
-
   return NextResponse.json({ added });
 }
