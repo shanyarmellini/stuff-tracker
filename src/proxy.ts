@@ -1,20 +1,15 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 import { env } from "~/env";
+import { isAdmin } from "~/lib/auth";
 
 // While the app is gated behind a waitlist, only the admin account (me) may
 // use anything beyond the landing page. Everyone else is bounced to "/".
-const PUBLIC_PATHS = ["/", "/api/waitlist", "/api/stripe/webhook"];
+const PUBLIC_PATHS = ["/", "/api/waitlist"];
 const ADMIN_AUTH_PATHS = ["/auth/login", "/auth/callback"];
 
-function isPublicPath(pathname: string) {
-  return PUBLIC_PATHS.some(
-    (path) => pathname === path || pathname.startsWith(`${path}/`),
-  );
-}
-
-function isAdminAuthPath(pathname: string) {
-  return ADMIN_AUTH_PATHS.some(
+function matchesAny(pathname: string, paths: string[]) {
+  return paths.some(
     (path) => pathname === path || pathname.startsWith(`${path}/`),
   );
 }
@@ -50,12 +45,19 @@ export async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  if (isPublicPath(pathname)) {
+  if (matchesAny(pathname, PUBLIC_PATHS)) {
     return response;
   }
 
-  const isAdmin = user?.app_metadata?.role === "admin";
-  if (isAdmin || isAdminAuthPath(pathname)) {
+  // Local dev only: skip the admin-only gate so any account you sign up with
+  // locally can reach the dashboard/onboarding to test end-to-end flows
+  // (e.g. Gmail app password scanning). NODE_ENV is only ever not
+  // "production" for `next dev`, never for a built/deployed app.
+  if (env.NODE_ENV !== "production") {
+    return response;
+  }
+
+  if (isAdmin(user) || matchesAny(pathname, ADMIN_AUTH_PATHS)) {
     return response;
   }
 
