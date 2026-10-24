@@ -1,34 +1,21 @@
 "use client";
 
+import posthog from "posthog-js";
 import { useEffect } from "react";
-import { type TextSize, useSettings } from "~/lib/use-settings";
-
-const FONT_SCALE: Record<TextSize, string> = {
-  small: "93.75%",
-  medium: "100%",
-  large: "112.5%",
-};
+import { useSettings } from "~/lib/use-settings";
 
 export function SettingsEffects() {
-  const { settings } = useSettings();
+  const { settings, loaded } = useSettings();
 
+  // PostHog is only initialized when a project token is configured (see
+  // instrumentation-client.ts). Only toggle on an actual change, since
+  // opt_in_capturing() itself sends an event.
   useEffect(() => {
-    document.documentElement.style.fontSize = FONT_SCALE[settings.textSize];
-  }, [settings.textSize]);
-
-  useEffect(() => {
-    document.documentElement.classList.toggle(
-      "high-contrast",
-      settings.highContrast,
-    );
-  }, [settings.highContrast]);
-
-  useEffect(() => {
-    document.documentElement.classList.toggle(
-      "motion-reduce-all",
-      settings.reducedMotion,
-    );
-  }, [settings.reducedMotion]);
+    if (!loaded || !posthog.__loaded) return;
+    const optedOut = posthog.has_opted_out_capturing();
+    if (settings.dataSharing && optedOut) posthog.opt_in_capturing();
+    if (!settings.dataSharing && !optedOut) posthog.opt_out_capturing();
+  }, [loaded, settings.dataSharing]);
 
   return null;
 }

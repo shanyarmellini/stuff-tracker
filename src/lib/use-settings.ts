@@ -2,55 +2,19 @@
 
 import { useEffect, useState } from "react";
 
-export type TextSize = "small" | "medium" | "large";
-export type EmailDigest = "instant" | "daily" | "weekly" | "none";
-export type LayoutView = "grid" | "list";
-
-export type AppSettings = {
-  textSize: TextSize;
-  highContrast: boolean;
-  reducedMotion: boolean;
-  layout: LayoutView;
-  pushAlerts: boolean;
-  emailDigest: EmailDigest;
-  inAppBadges: boolean;
-  dndEnabled: boolean;
-  dndStart: string;
-  dndEnd: string;
+type AppSettings = {
   dataSharing: boolean;
-  cameraAccess: boolean;
-  micAccess: boolean;
-  locationAccess: boolean;
-  hideActiveStatus: boolean;
-  currency: string;
-  offlineDownloadLimitMb: number;
-  autoplay: boolean;
 };
 
-export const DEFAULT_SETTINGS: AppSettings = {
-  textSize: "medium",
-  highContrast: false,
-  reducedMotion: false,
-  layout: "grid",
-  pushAlerts: true,
-  emailDigest: "daily",
-  inAppBadges: true,
-  dndEnabled: false,
-  dndStart: "22:00",
-  dndEnd: "07:00",
-  dataSharing: false,
-  cameraAccess: false,
-  micAccess: false,
-  locationAccess: false,
-  hideActiveStatus: false,
-  currency: "USD",
-  offlineDownloadLimitMb: 500,
-  autoplay: true,
+const DEFAULT_SETTINGS: AppSettings = {
+  dataSharing: true,
 };
 
 const STORAGE_KEY = "stuff-tracker:settings";
 const CHANGE_EVENT = "stuff-tracker:settings-change";
 
+// Stored settings may contain keys from older versions of the settings page;
+// they're carried along harmlessly and ignored.
 function readSettings(): AppSettings {
   if (typeof window === "undefined") return DEFAULT_SETTINGS;
   try {
@@ -64,10 +28,14 @@ function readSettings(): AppSettings {
 
 export function useSettings() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  // False until the stored settings have been read, so effects don't briefly
+  // act on the defaults.
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    setSettings(readSettings());
     const handleChange = () => setSettings(readSettings());
+    handleChange();
+    setLoaded(true);
     window.addEventListener(CHANGE_EVENT, handleChange);
     window.addEventListener("storage", handleChange);
     return () => {
@@ -82,5 +50,5 @@ export function useSettings() {
     window.dispatchEvent(new Event(CHANGE_EVENT));
   };
 
-  return { settings, update };
+  return { settings, loaded, update };
 }
