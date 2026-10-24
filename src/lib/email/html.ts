@@ -1,10 +1,21 @@
+const MIN_IMAGE_SIDE_PX = 40;
+
+/** Declared width/height attributes; 0 when absent. */
+function imageSize(tag: string): { width: number; height: number } {
+  return {
+    width: Number(tag.match(/width=["']?(\d+)/i)?.[1] ?? ""),
+    height: Number(tag.match(/height=["']?(\d+)/i)?.[1] ?? ""),
+  };
+}
+
 function isQualifyingImage(tag: string, src: string): boolean {
   if (!src?.startsWith("http") || /track|pixel|spacer|beacon/i.test(src))
     return false;
-  const width = Number(tag.match(/width=["']?(\d+)/i)?.[1] ?? "");
-  const height = Number(tag.match(/height=["']?(\d+)/i)?.[1] ?? "");
-  if ((width && width < 40) || (height && height < 40)) return false;
-  return true;
+  const { width, height } = imageSize(tag);
+  return !(
+    (width && width < MIN_IMAGE_SIDE_PX) ||
+    (height && height < MIN_IMAGE_SIDE_PX)
+  );
 }
 
 // Replaces qualifying <img> tags with an inline "[photo: url]" marker so
@@ -40,8 +51,7 @@ export function extractFirstImageUrl(html: string): string | null {
     if (!isQualifyingImage(tag, src)) continue;
     // Prefer the largest qualifying image (product photos tend to dwarf
     // logos/icons), falling back to the first one when sizes are unknown.
-    const width = Number(tag.match(/width=["']?(\d+)/i)?.[1] ?? "");
-    const height = Number(tag.match(/height=["']?(\d+)/i)?.[1] ?? "");
+    const { width, height } = imageSize(tag);
     const area = width && height ? width * height : 0;
     if (!best || area > best.area) best = { src, area };
   }
