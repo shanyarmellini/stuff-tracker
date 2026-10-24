@@ -1,7 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ExtractedPurchase } from "~/lib/ai/extractPurchases";
+import {
+  type ExtractedPurchase,
+  extractPurchasesFromEmails,
+  type PurchaseCandidateEmail,
+} from "~/lib/ai/extractPurchases";
+
+const EMAILS_PER_AI_BATCH = 8;
 
 const LINK_FORMAT = /^(https?:\/\/)?([^./\s]+\.)+[^./\s]{2,}(\/\S*)?$/i;
+
+type ItemSource = "gmail_ai" | "manual_ai";
 
 function sanitizeLink(link: string | null): string | null {
   if (!link) return null;
@@ -13,52 +21,126 @@ function sanitizeLink(link: string | null): string | null {
   return trimmed;
 }
 
-/**
- * Upserts AI-extracted purchases into `items` (de-duping on
- * `user_id,gmail_message_id,name,price` - not just the message id, since a
- * single email can contain multiple distinct products) and appends any
- * newly-seen categories to `profiles.item_types`. Shared by the Gmail OAuth
- * sync route and the Gmail App Password onboarding scan, which both feed
- * the same `extractPurchasesFromEmails` output into the same table.
- */
-export async function insertExtractedPurchases(
+/** The user's saved categories (`profiles.item_types`), or [] if unset. */
+export async function getItemTypes(
   supabase: SupabaseClient,
   userId: string,
-  extracted: ExtractedPurchase[],
-  existingItemTypes: string[],
-): Promise<{ added: number }> {
-  if (extracted.length === 0) return { added: 0 };
+): Promise<string[]> {
+  const { data } = await supabase
+    .from("profiles")
+    .select("item_types")
+    .eq("user_id", userId)
+    .maybeSingle();
+  return data?.item_types ?? [];
+}
 
-  const seenTypesLower = new Set(existingItemTypes.map((t) => t.toLowerCase()));
-  const newTypes: string[] = [];
+/** Drops candidates whose Gmail message already produced items. */
+export async function filterAlreadyImported(
+  supabase: SupabaseClient,
+  userId: string,
+  candidates: PurchaseCandidateEmail[],
+): Promise<PurchaseCandidateEmail[]> {
+  if (candidates.length === 0) return [];
+  const { data, error } = await supabase
+    .from("items")
+    .select("gmail_message_id")
+    .eq("user_id", userId)
+    .in(
+      "gmail_message_id",
+      candidates.map((c) => c.id),
+    );
+  if (error) throw new Error(`Failed to load imported items: ${error.message}`);
+  const imported = new Set(data.map((row) => row.gmail_message_id));
+  return candidates.filter((c) => !imported.has(c.id));
+}
 
-  const { data: minRow } = await supabase
+/**
+ * Runs AI extraction over the emails in fixed-size batches. Batches run
+ * concurrently: each is an independent AI call, and callers are serverless
+ * functions with a wall-clock budget.
+ */
+export async function extractInBatches(
+  emails: PurchaseCandidateEmail[],
+  existingCategories: string[],
+): Promise<ExtractedPurchase[]> {
+  const batches: PurchaseCandidateEmail[][] = [];
+  for (let i = 0; i < emails.length; i += EMAILS_PER_AI_BATCH) {
+    batches.push(emails.slice(i, i + EMAILS_PER_AI_BATCH));
+  }
+  const results = await Promise.all(
+    batches.map((batch) =>
+      extractPurchasesFromEmails(batch, existingCategories),
+    ),
+  );
+  return results.flatMap((result) => result.items);
+}
+
+async function nextTopSortOrder(supabase: SupabaseClient, userId: string) {
+  const { data } = await supabase
     .from("items")
     .select("sort_order")
     .eq("user_id", userId)
     .order("sort_order", { ascending: true })
     .limit(1)
     .maybeSingle();
-  let nextSortOrder = (minRow?.sort_order ?? 0) - 1;
+  return (data?.sort_order ?? 0) - 1;
+}
 
-  const rows = extracted.map((item) => {
-    if (!seenTypesLower.has(item.category.toLowerCase())) {
-      seenTypesLower.add(item.category.toLowerCase());
-      newTypes.push(item.category);
+async function appendNewCategories(
+  supabase: SupabaseClient,
+  userId: string,
+  existingItemTypes: string[],
+  extracted: ExtractedPurchase[],
+  insertedCategories: Set<string>,
+) {
+  const known = new Set(existingItemTypes.map((t) => t.toLowerCase()));
+  const newTypes: string[] = [];
+  for (const { category } of extracted) {
+    const lower = category.toLowerCase();
+    if (insertedCategories.has(lower) && !known.has(lower)) {
+      known.add(lower);
+      newTypes.push(category);
     }
-    return {
-      user_id: userId,
-      name: item.name,
-      price: item.price,
-      link: sanitizeLink(item.link),
-      category: item.category.toLowerCase(),
-      photo_url: item.imageUrl,
-      quantity: item.quantity,
-      sort_order: nextSortOrder--,
-      source: "gmail_ai",
-      gmail_message_id: item.emailId,
-    };
-  });
+  }
+  if (newTypes.length === 0) return;
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ item_types: [...existingItemTypes, ...newTypes] })
+    .eq("user_id", userId);
+  if (error) console.error("Failed to add new item types:", error.message);
+}
+
+/**
+ * Inserts AI-extracted purchases into `items` and appends any newly-seen
+ * categories to `profiles.item_types`. Gmail items de-dupe on
+ * `user_id,gmail_message_id,name,price` (not just the message id, since one
+ * email can contain several products); manually pasted emails have no
+ * message id to store. Returns the ids of the rows actually inserted and
+ * throws on a database error.
+ */
+export async function insertExtractedPurchases(
+  supabase: SupabaseClient,
+  userId: string,
+  extracted: ExtractedPurchase[],
+  existingItemTypes: string[],
+  source: ItemSource = "gmail_ai",
+): Promise<string[]> {
+  if (extracted.length === 0) return [];
+
+  const topSortOrder = await nextTopSortOrder(supabase, userId);
+  const rows = extracted.map((item, index) => ({
+    user_id: userId,
+    name: item.name,
+    price: item.price,
+    link: sanitizeLink(item.link),
+    category: item.category.toLowerCase(),
+    photo_url: item.imageUrl,
+    quantity: item.quantity,
+    sort_order: topSortOrder - index,
+    source,
+    gmail_message_id: source === "gmail_ai" ? item.emailId : null,
+  }));
 
   const { data: inserted, error } = await supabase
     .from("items")
@@ -66,19 +148,17 @@ export async function insertExtractedPurchases(
       onConflict: "user_id,gmail_message_id,name,price",
       ignoreDuplicates: true,
     })
-    .select("id");
-
+    .select("id, category");
   if (error) {
-    console.error("Failed to insert AI-detected items:", error.message);
-    return { added: 0 };
+    throw new Error(`Failed to insert extracted items: ${error.message}`);
   }
 
-  if (newTypes.length > 0) {
-    await supabase
-      .from("profiles")
-      .update({ item_types: [...existingItemTypes, ...newTypes] })
-      .eq("user_id", userId);
-  }
-
-  return { added: inserted?.length ?? 0 };
+  await appendNewCategories(
+    supabase,
+    userId,
+    existingItemTypes,
+    extracted,
+    new Set(inserted.map((row) => row.category)),
+  );
+  return inserted.map((row) => row.id);
 }
