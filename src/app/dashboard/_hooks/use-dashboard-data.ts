@@ -1,4 +1,3 @@
-import posthog from "posthog-js";
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "~/lib/supabase/client";
 import { getExtractionsUsed } from "~/lib/usage";
@@ -44,7 +43,6 @@ export function useDashboardData() {
         if (!user) return;
         setEmail(user.email ?? null);
         setUserId(user.id);
-        posthog.identify(user.id, { email: user.email });
         loadItemsAndCategories(user.id).then(() => setItemsLoaded(true));
         loadExtractionsUsed(user.id);
       });

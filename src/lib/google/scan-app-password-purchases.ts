@@ -23,7 +23,7 @@ import { createAdminClient } from "~/lib/supabase/admin";
 // exactly, cutting off older receipts from low-frequency merchants.
 const MAX_SCAN_CANDIDATES = 200;
 
-type ScanAppPasswordResult = { candidatesFound: number; added: number };
+type ScanAppPasswordResult = { added: number };
 
 async function findCandidates(
   userId: string,
@@ -76,7 +76,7 @@ export async function scanAppPasswordGmailForItems(
   userId: string,
 ): Promise<ScanAppPasswordResult> {
   const candidates = await findCandidates(userId);
-  if (candidates.length === 0) return { candidatesFound: 0, added: 0 };
+  if (candidates.length === 0) return { added: 0 };
 
   const fresh = await filterAlreadyImported(supabase, userId, candidates);
   await logScan(userId, candidates, fresh);
@@ -90,5 +90,5 @@ export async function scanAppPasswordGmailForItems(
     extracted,
     itemTypes,
   );
-  return { candidatesFound: candidates.length, added: insertedIds.length };
+  return { added: insertedIds.length };
 }

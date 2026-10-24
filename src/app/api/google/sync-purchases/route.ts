@@ -6,7 +6,6 @@ import {
   filterAlreadyImported,
   insertExtractedPurchases,
 } from "~/lib/items/import-purchases";
-import { captureServerEvent } from "~/lib/posthog-server";
 import { createAdminClient } from "~/lib/supabase/admin";
 
 const MAX_CANDIDATES_PER_SYNC = 20;
@@ -72,10 +71,5 @@ export async function POST() {
   }
 
   await markSynced();
-  await captureServerEvent({
-    distinctId: user.id,
-    event: "gmail_purchases_synced",
-    properties: { items_added: added, candidates_found: candidates.length },
-  });
   return NextResponse.json({ added });
 }

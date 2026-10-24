@@ -1,6 +1,5 @@
 "use client";
 
-import posthog from "posthog-js";
 import { useState } from "react";
 import { createClient } from "~/lib/supabase/client";
 import { isValidLink } from "~/lib/url";
@@ -88,12 +87,6 @@ export function AddItemModal({
         data as Item,
         isNewCategory ? { id: category, label: pendingCategoryLabel } : null,
       );
-      posthog.capture("item_added", {
-        has_link: Boolean(link.trim()),
-        has_photo: Boolean(photoUrl),
-        has_category: Boolean(category),
-        source: "manual",
-      });
     }
     onClose();
   };

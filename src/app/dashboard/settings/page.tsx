@@ -5,8 +5,6 @@ import packageJson from "~/../package.json";
 import { SECTION_CARD_CLASS } from "~/components/class-names";
 import { SignOutButton } from "~/components/sign-out-button";
 import { SubPageShell } from "~/components/sub-page-shell";
-import { useSettings } from "~/lib/use-settings";
-import { cn } from "~/lib/utils";
 
 function Section({
   emoji,
@@ -52,39 +50,7 @@ function Row({
   );
 }
 
-function Toggle({
-  checked,
-  onChange,
-  label,
-}: {
-  checked: boolean;
-  onChange: (value: boolean) => void;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      onClick={() => onChange(!checked)}
-      className={cn(
-        "relative h-6 w-11 shrink-0 rounded-full transition-colors",
-        checked ? "bg-brand" : "bg-input",
-      )}
-    >
-      <span
-        className={cn(
-          "absolute top-0.5 h-5 w-5 rounded-full bg-card shadow transition-transform",
-          checked ? "translate-x-5" : "translate-x-0.5",
-        )}
-      />
-    </button>
-  );
-}
-
 export default function SettingsPage() {
-  const { settings, update } = useSettings();
   const [timeZone, setTimeZone] = useState("");
 
   useEffect(() => {
@@ -94,19 +60,6 @@ export default function SettingsPage() {
   return (
     <SubPageShell title="Settings" subtitle="Manage your privacy and app info.">
       <div className="flex flex-col gap-4">
-        <Section emoji="🔒" title="Privacy">
-          <Row
-            label="Data sharing"
-            description="Share anonymous usage data to help us improve"
-          >
-            <Toggle
-              label="Data sharing"
-              checked={settings.dataSharing}
-              onChange={(dataSharing) => update({ dataSharing })}
-            />
-          </Row>
-        </Section>
-
         <Section emoji="📄" title="Support & About">
           <Row label="Time zone" description="Detected from your device">
             <span className="font-ui text-xs text-muted-foreground">

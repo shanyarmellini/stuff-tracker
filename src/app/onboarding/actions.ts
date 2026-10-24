@@ -10,7 +10,6 @@ import {
 import { checkGmailAppPassword } from "~/lib/google/gmail-app-password";
 import { MOCK_GMAIL_ENABLED } from "~/lib/google/mock-emails";
 import { scanAppPasswordGmailForItems } from "~/lib/google/scan-app-password-purchases";
-import { captureServerEvent } from "~/lib/posthog-server";
 import { createAdminClient } from "~/lib/supabase/admin";
 import { getCurrentUser } from "~/lib/supabase/server";
 
@@ -89,16 +88,7 @@ export async function scanConnectedGmailForItems(): Promise<ScanGmailResult> {
   if (!user) return { added: 0 };
 
   try {
-    const result = await scanAppPasswordGmailForItems(supabase, user.id);
-    await captureServerEvent({
-      distinctId: user.id,
-      event: "onboarding_gmail_scan_completed",
-      properties: {
-        items_added: result.added,
-        candidates_found: result.candidatesFound,
-      },
-    });
-    return { added: result.added };
+    return await scanAppPasswordGmailForItems(supabase, user.id);
   } catch (err) {
     console.error("Failed to scan Gmail during onboarding:", err);
     return { added: 0 };
@@ -132,10 +122,5 @@ export async function saveOnboarding(formData: FormData) {
     redirect("/onboarding");
   }
 
-  await captureServerEvent({
-    distinctId: user.id,
-    event: "onboarding_completed",
-    properties: { item_types_count: item_types.length, gender, age },
-  });
   redirect("/dashboard");
 }

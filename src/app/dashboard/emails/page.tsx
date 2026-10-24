@@ -1,6 +1,5 @@
 "use client";
 
-import posthog from "posthog-js";
 import { useEffect, useState } from "react";
 import { LoadingText, SubPageShell } from "~/components/sub-page-shell";
 import type { GmailMessage } from "~/lib/google/gmail";
@@ -64,7 +63,6 @@ export default function EmailsPage() {
     try {
       const res = await fetch("/api/google/disconnect", { method: "POST" });
       if (res.ok) {
-        posthog.capture("gmail_disconnected");
         setConnected(false);
         setEmail(null);
         setMessages([]);

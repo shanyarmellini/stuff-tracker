@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Patrick_Hand_SC, Poppins } from "next/font/google";
 import { Navbar } from "~/components/navbar";
-import { SettingsEffects } from "~/components/settings-effects";
 import { env } from "~/env";
 import { getCurrentUser } from "~/lib/supabase/server";
 import "./globals.css";
@@ -38,7 +37,6 @@ export default async function RootLayout({
       <body
         className={`${inter.variable} ${patrickHandSC.variable} ${poppins.variable} font-sans`}
       >
-        <SettingsEffects />
         <Navbar user={user} isDev={env.NODE_ENV !== "production"} />
         {children}
       </body>

@@ -1,6 +1,5 @@
 "use client";
 
-import posthog from "posthog-js";
 import { useState } from "react";
 import { ScanningStep } from "~/app/onboarding/scanning-step";
 import { VerificationStep } from "~/app/onboarding/verification-step";
@@ -168,10 +167,6 @@ function usePasteEmail({
       setTruncationWarning(data.truncationWarning ?? null);
 
       const added = data.added ?? 0;
-      posthog.capture("email_extraction_completed", {
-        items_added: added,
-        found_items: added > 0,
-      });
       if (added === 0) {
         setResult(NO_PURCHASE_FOUND);
       } else {

@@ -4,7 +4,6 @@ import {
   createGoogleOAuthClient,
   GMAIL_OAUTH_STATE_COOKIE,
 } from "~/lib/google/oauth";
-import { captureServerEvent } from "~/lib/posthog-server";
 import { createAdminClient } from "~/lib/supabase/admin";
 import { getCurrentUser } from "~/lib/supabase/server";
 
@@ -69,7 +68,6 @@ async function connectGmail(request: NextRequest): Promise<string> {
   try {
     const result = await saveGoogleConnection(user.id, code);
     if (!result.ok) return errorPath(result.error);
-    await captureServerEvent({ distinctId: user.id, event: "gmail_connected" });
   } catch (err) {
     console.error("Google OAuth callback failed:", err);
     return errorPath("Something went wrong connecting to Google.");
