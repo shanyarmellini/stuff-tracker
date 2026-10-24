@@ -54,6 +54,17 @@ export async function filterAlreadyImported(
   return candidates.filter((c) => !imported.has(c.id));
 }
 
+/** Splits emails into the fixed-size batches each AI call receives. */
+export function splitIntoAiBatches(
+  emails: PurchaseCandidateEmail[],
+): PurchaseCandidateEmail[][] {
+  const batches: PurchaseCandidateEmail[][] = [];
+  for (let i = 0; i < emails.length; i += EMAILS_PER_AI_BATCH) {
+    batches.push(emails.slice(i, i + EMAILS_PER_AI_BATCH));
+  }
+  return batches;
+}
+
 /**
  * Runs AI extraction over the emails in fixed-size batches. Batches run
  * concurrently: each is an independent AI call, and callers are serverless
@@ -63,12 +74,8 @@ export async function extractInBatches(
   emails: PurchaseCandidateEmail[],
   existingCategories: string[],
 ): Promise<ExtractedPurchase[]> {
-  const batches: PurchaseCandidateEmail[][] = [];
-  for (let i = 0; i < emails.length; i += EMAILS_PER_AI_BATCH) {
-    batches.push(emails.slice(i, i + EMAILS_PER_AI_BATCH));
-  }
   const results = await Promise.all(
-    batches.map((batch) =>
+    splitIntoAiBatches(emails).map((batch) =>
       extractPurchasesFromEmails(batch, existingCategories),
     ),
   );

@@ -138,6 +138,7 @@ type EnvelopeSurvivor = EnvelopeSummary & { uid: number; domain: string };
 
 type EnvelopeScanResult = {
   totalMatchedByKeywordQuery: number;
+  considered: EnvelopeSummary[];
   survivors: EnvelopeSurvivor[];
   droppedAsNoise: EnvelopeSummary[];
 };
@@ -146,7 +147,7 @@ type EnvelopeScanResult = {
 // wide window of the most-recent keyword matches, and drop the ones whose
 // subject reads as marketing/lifecycle noise. Shared by the real scan
 // (`findPurchaseCandidateEmailsViaImap`) and the admin debug tool
-// (`debugEnvelopeScan`), which stops here instead of also fetching bodies.
+// (`debugScanPipeline`).
 async function scanEnvelopes(
   client: ImapFlow,
   allMail: string,
@@ -158,6 +159,7 @@ async function scanEnvelopes(
     if (!uids || uids.length === 0) {
       return {
         totalMatchedByKeywordQuery: 0,
+        considered: [],
         survivors: [],
         droppedAsNoise: [],
       };
@@ -165,6 +167,7 @@ async function scanEnvelopes(
 
     // UIDs are ascending, so the tail is the newest.
     const windowUids = uids.slice(-ENVELOPE_SCAN_WINDOW);
+    const considered: EnvelopeSummary[] = [];
     const survivors: EnvelopeSurvivor[] = [];
     const droppedAsNoise: EnvelopeSummary[] = [];
     for await (const message of client.fetch(
@@ -175,6 +178,7 @@ async function scanEnvelopes(
       if (message.uid == null) continue;
       const subject = message.envelope?.subject ?? "";
       const fromAddress = message.envelope?.from?.[0]?.address ?? "";
+      considered.push({ subject, from: fromAddress });
       // TODO: subject-keyword matching is too narrow; replace with a smarter
       // noise classifier.
       if (looksLikeMarketingNoise(subject)) {
@@ -190,6 +194,7 @@ async function scanEnvelopes(
     }
     return {
       totalMatchedByKeywordQuery: uids.length,
+      considered,
       survivors,
       droppedAsNoise,
     };
@@ -208,6 +213,46 @@ async function openAllMailClient(
   const allMail =
     mailboxes.find((box) => box.specialUse === "\\All")?.path ?? "INBOX";
   return { client, allMail };
+}
+
+// Phase 2a: choose which survivors get their full bodies fetched - `limit`
+// of them, fairly across sender domains (see pickFairlyAcrossSenders) rather
+// than just the newest `limit` overall. Sorts ascending first so "newest" is
+// well-defined regardless of the order the server streamed back.
+function selectSurvivorsForBodyFetch(
+  survivors: EnvelopeSurvivor[],
+  limit: number,
+): EnvelopeSurvivor[] {
+  const sorted = [...survivors].sort((a, b) => a.uid - b.uid);
+  const pickedUids = pickFairlyAcrossSenders(sorted, limit);
+  const byUid = new Map(sorted.map((survivor) => [survivor.uid, survivor]));
+  return pickedUids.map((uid) => byUid.get(uid) as EnvelopeSurvivor);
+}
+
+// Phase 2b: fetch and parse full bodies for the selected uids.
+async function fetchCandidateEmails(
+  client: ImapFlow,
+  uids: number[],
+): Promise<PurchaseCandidateEmail[]> {
+  const results: PurchaseCandidateEmail[] = [];
+  for await (const message of client.fetch(
+    uids,
+    { source: true, envelope: true },
+    { uid: true },
+  )) {
+    const raw = message.source?.toString("utf-8") ?? "";
+    const { html, text } = parseRawEmail(raw);
+    const bodyText = html ? stripHtml(html) : (text ?? "");
+
+    results.push({
+      id: message.envelope?.messageId ?? String(message.uid),
+      from: message.envelope?.from?.[0]?.address ?? "",
+      subject: message.envelope?.subject ?? "",
+      bodyText,
+      imageUrl: html ? extractFirstImageUrl(html) : null,
+    });
+  }
+  return results;
 }
 
 /**
@@ -233,68 +278,86 @@ export async function findPurchaseCandidateEmailsViaImap(
     );
     if (survivors.length === 0) return [];
 
-    // Phase 2: fetch full bodies only for `limit` survivors, chosen fairly
-    // across sender domains (see pickFairlyAcrossSenders) rather than just
-    // the newest `limit` overall. Sort ascending first so "newest" is
-    // well-defined regardless of the order the server streamed back.
-    survivors.sort((a, b) => a.uid - b.uid);
-    const targetUids = pickFairlyAcrossSenders(survivors, limit);
-    const results: PurchaseCandidateEmail[] = [];
-
-    for await (const message of client.fetch(
-      targetUids,
-      { source: true, envelope: true },
-      { uid: true },
-    )) {
-      const raw = message.source?.toString("utf-8") ?? "";
-      const { html, text } = parseRawEmail(raw);
-      const bodyText = html ? stripHtml(html) : (text ?? "");
-
-      results.push({
-        id: message.envelope?.messageId ?? String(message.uid),
-        from: message.envelope?.from?.[0]?.address ?? "",
-        subject: message.envelope?.subject ?? "",
-        bodyText,
-        imageUrl: html ? extractFirstImageUrl(html) : null,
-      });
-    }
-
-    return results;
+    const selected = selectSurvivorsForBodyFetch(survivors, limit);
+    return await fetchCandidateEmails(
+      client,
+      selected.map((survivor) => survivor.uid),
+    );
   } finally {
     await client.logout().catch(() => client.close());
   }
 }
 
-export type EnvelopeScanDebugResult = {
-  totalMatchedByKeywordQuery: number;
-  consideredInWindow: number;
-  keptAfterNoiseFilter: EnvelopeSummary[];
-  droppedAsNoise: EnvelopeSummary[];
+export type ScanPipelineDebugResult = {
+  envelopeScan: {
+    keywordQuery: string;
+    totalMatchedByKeywordQuery: number;
+    windowSize: number;
+    considered: EnvelopeSummary[];
+  };
+  noiseFilter: {
+    kept: EnvelopeSummary[];
+    dropped: EnvelopeSummary[];
+  };
+  fairSelection: {
+    limit: number;
+    selected: EnvelopeSummary[];
+    notSelected: EnvelopeSummary[];
+  };
+  candidates: PurchaseCandidateEmail[];
 };
 
+function toSummary({ subject, from }: EnvelopeSummary): EnvelopeSummary {
+  return { subject, from };
+}
+
 /**
- * Runs just the cheap envelope phase of the scan (keyword search + noise
- * filter) and returns every subject it kept vs. dropped, without fetching
- * bodies or touching the AI. Lets the admin debug tool answer "is the
- * keyword scan itself working" independently of AI extraction.
+ * Runs the same IMAP phases as `findPurchaseCandidateEmailsViaImap`, but
+ * records what each phase produced (envelope scan -> noise filter -> fair
+ * sender selection -> body fetch) so the admin debug tool can show every
+ * step. Never touches the AI.
  */
-export async function debugEnvelopeScan(
+export async function debugScanPipeline(
   email: string,
   appPassword: string,
-  { since }: { since?: Date } = {},
-): Promise<EnvelopeScanDebugResult> {
+  { since, limit }: { since?: Date; limit: number },
+): Promise<ScanPipelineDebugResult> {
+  const keywordQuery = buildGmailRawQuery(since);
   const { client, allMail } = await openAllMailClient(email, appPassword);
   try {
-    const { totalMatchedByKeywordQuery, survivors, droppedAsNoise } =
-      await scanEnvelopes(client, allMail, buildGmailRawQuery(since));
-    return {
+    const {
       totalMatchedByKeywordQuery,
-      consideredInWindow: survivors.length + droppedAsNoise.length,
-      keptAfterNoiseFilter: survivors.map(({ subject, from }) => ({
-        subject,
-        from,
-      })),
+      considered,
+      survivors,
       droppedAsNoise,
+    } = await scanEnvelopes(client, allMail, keywordQuery);
+
+    const selected = selectSurvivorsForBodyFetch(survivors, limit);
+    const selectedUids = new Set(selected.map((survivor) => survivor.uid));
+    const candidates =
+      selected.length > 0
+        ? await fetchCandidateEmails(client, [...selectedUids])
+        : [];
+
+    return {
+      envelopeScan: {
+        keywordQuery,
+        totalMatchedByKeywordQuery,
+        windowSize: ENVELOPE_SCAN_WINDOW,
+        considered,
+      },
+      noiseFilter: {
+        kept: survivors.map(toSummary),
+        dropped: droppedAsNoise,
+      },
+      fairSelection: {
+        limit,
+        selected: selected.map(toSummary),
+        notSelected: survivors
+          .filter((survivor) => !selectedUids.has(survivor.uid))
+          .map(toSummary),
+      },
+      candidates,
     };
   } finally {
     await client.logout().catch(() => client.close());

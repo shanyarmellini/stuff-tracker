@@ -138,6 +138,29 @@ function buildUserMessage(emails: PurchaseCandidateEmail[]): string {
   return `Here are ${emails.length} emails from a user's inbox. Find every product purchase.\n\n${emailBlocks}`;
 }
 
+export type PurchaseExtractionRequest = {
+  provider: typeof env.AI_PROVIDER;
+  model: string;
+  tool: ReturnType<typeof buildRecordPurchasesTool>;
+  userMessage: string;
+};
+
+/**
+ * The exact request `extractPurchasesFromEmails` would send for these emails,
+ * without sending it. Used by the admin scan debug tool.
+ */
+export function describePurchaseExtractionRequest(
+  emails: PurchaseCandidateEmail[],
+  existingCategories: string[] = [],
+): PurchaseExtractionRequest {
+  return {
+    provider: env.AI_PROVIDER,
+    model: env.AI_PROVIDER === "ollama" ? env.OLLAMA_MODEL : ANTHROPIC_MODEL,
+    tool: buildRecordPurchasesTool(existingCategories),
+    userMessage: buildUserMessage(emails),
+  };
+}
+
 function toExtractedPurchase(
   item: ToolItem,
   email: PurchaseCandidateEmail,

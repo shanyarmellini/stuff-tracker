@@ -7,7 +7,7 @@ import {
 import { formatPrice } from "~/lib/format";
 import { createAdminClient } from "~/lib/supabase/admin";
 import { formatJoinDate, maskAppPassword } from "../_lib";
-import { EnvelopeScanTester } from "./envelope-scan-tester";
+import { ScanPipelineTester } from "./scan-pipeline-tester";
 
 export const dynamic = "force-dynamic";
 
@@ -262,7 +262,7 @@ export default async function AdminUserPage({
           )}
         </div>
 
-        <EnvelopeScanTester userId={userId} />
+        <ScanPipelineTester userId={userId} />
 
         {scanLog ? (
           <>
