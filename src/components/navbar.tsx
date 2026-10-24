@@ -3,18 +3,20 @@
 import type { User } from "@supabase/supabase-js";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { signout } from "~/app/auth/actions";
+import { SignOutButton } from "~/components/sign-out-button";
 import { Button } from "~/components/ui/button";
+import { isAdmin } from "~/lib/auth";
 import { cn } from "~/lib/utils";
 
-const links = [
+// While the app is waitlist-gated, the nav links are only shown to the admin.
+const ADMIN_NAV_LINKS = [
   { href: "/dashboard", label: "Home" },
-  { href: "/subscriptions", label: "Subscriptions" },
+  { href: "/admin", label: "Admin" },
 ];
 
-export function Navbar({ user }: { user: User | null }) {
+export function Navbar({ user, isDev }: { user: User | null; isDev: boolean }) {
   const pathname = usePathname();
-  const isAdmin = user?.app_metadata?.role === "admin";
+  const showAdminLinks = isAdmin(user);
 
   return (
     <nav className="border-b border-border bg-background">
@@ -25,9 +27,9 @@ export function Navbar({ user }: { user: User | null }) {
         >
           Stuff Tracker
         </Link>
-        {isAdmin && (
+        {showAdminLinks && (
           <div className="flex flex-1 items-center gap-3 sm:gap-4">
-            {links.map((link) => (
+            {ADMIN_NAV_LINKS.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
@@ -41,26 +43,16 @@ export function Navbar({ user }: { user: User | null }) {
                 {link.label}
               </Link>
             ))}
-            <Link
-              href="/admin"
-              className={cn(
-                "text-sm whitespace-nowrap transition-colors hover:text-foreground",
-                pathname === "/admin"
-                  ? "text-foreground"
-                  : "text-muted-foreground",
-              )}
-            >
-              Admin
-            </Link>
           </div>
         )}
         <div className="ml-auto flex shrink-0 items-center gap-2">
-          {isAdmin && (
-            <form action={signout}>
-              <Button type="submit" variant="outline" size="sm">
-                Sign out
-              </Button>
-            </form>
+          {isDev && pathname !== "/dashboard" && (
+            <Button asChild variant="outline" size="sm">
+              <Link href="/dashboard">Go to Dashboard</Link>
+            </Button>
+          )}
+          {showAdminLinks && (
+            <SignOutButton variant="nav">Sign out</SignOutButton>
           )}
         </div>
       </div>
