@@ -1,14 +1,44 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { env } from "~/env";
-import { extractPurchasesFromEmails } from "~/lib/ai/extractPurchases";
-import type { PurchaseCandidateEmail } from "~/lib/google/gmail-app-password";
-import { findPurchaseCandidateEmailsViaImap } from "~/lib/google/gmail-app-password";
-import { MOCK_CANDIDATE_EMAILS } from "~/lib/google/mock-emails";
-import { insertExtractedPurchases } from "~/lib/items/insert-extracted-purchases";
+import type { PurchaseCandidateEmail } from "~/lib/ai/extractPurchases";
+import {
+  findPurchaseCandidateEmailsViaImap,
+  loadAppPasswordConnection,
+} from "~/lib/google/gmail-app-password";
+import {
+  MOCK_CANDIDATE_EMAILS,
+  MOCK_GMAIL_ENABLED,
+} from "~/lib/google/mock-emails";
+import {
+  extractInBatches,
+  filterAlreadyImported,
+  getItemTypes,
+  insertExtractedPurchases,
+} from "~/lib/items/import-purchases";
 import { createAdminClient } from "~/lib/supabase/admin";
 
-const MOCK_GMAIL_ENABLED =
-  env.MOCK_GMAIL === "true" && env.NODE_ENV !== "production";
+// This is a one-time full-history import (unlike the incremental OAuth
+// sync-purchases route), so the cap is much higher. These are survivors
+// after the IMAP layer has already dropped marketing noise, so each slot is
+// a likely-real purchase. Raised 100 -> 200 after real scans hit the cap
+// exactly, cutting off older receipts from low-frequency merchants.
+const MAX_SCAN_CANDIDATES = 200;
+
+type ScanAppPasswordResult = { candidatesFound: number; added: number };
+
+async function findCandidates(
+  userId: string,
+): Promise<PurchaseCandidateEmail[]> {
+  if (MOCK_GMAIL_ENABLED) return MOCK_CANDIDATE_EMAILS;
+
+  const connection = await loadAppPasswordConnection(userId);
+  if (!connection) return [];
+
+  return findPurchaseCandidateEmailsViaImap(
+    connection.email,
+    connection.app_password,
+    { limit: MAX_SCAN_CANDIDATES },
+  );
+}
 
 // Shape persisted into email_scan_logs (candidates/sent_to_ai jsonb columns)
 // for admin debugging - see the migration for why this includes full bodies.
@@ -21,134 +51,44 @@ function toLoggedEmail(email: PurchaseCandidateEmail) {
   };
 }
 
-const SCAN_BATCH_SIZE = 8;
-// This is a one-time full-history import (unlike the incremental OAuth
-// sync-purchases route), so the cap is much higher - raised from 20 after
-// onboarding scans were missing most of a user's actual purchase history.
-// These are the survivors after the IMAP layer has already dropped marketing
-// noise, so each slot here is a likely-real purchase rather than a keyword
-// coincidence - raised again once code-side denoising made the candidate set
-// dense enough to be worth the extra AI batches. Raised again (100 -> 200)
-// after confirming real scans were hitting this cap exactly, meaning
-// genuine purchases past the 100th slot (e.g. a low-frequency merchant's
-// older receipts) were being cut off entirely rather than just delayed.
-const MAX_SCAN_CANDIDATES = 200;
-
-export type ScanAppPasswordResult = {
-  connected: boolean;
-  candidatesFound: number;
-  freshCandidates: number;
-  extracted: number;
-  added: number;
-  // Temporary diagnostic: subjects of the fresh candidates that were fed to
-  // the AI. Lets us tell "the search net is full of noise" apart from
-  // "the AI extraction/insert pipeline is broken" without reading email
-  // bodies. Remove once scan coverage is confirmed working end to end.
-  sampleSubjects?: string[];
-};
+async function logScan(
+  userId: string,
+  candidates: PurchaseCandidateEmail[],
+  sentToAi: PurchaseCandidateEmail[],
+) {
+  const { error } = await createAdminClient()
+    .from("email_scan_logs")
+    .insert({
+      user_id: userId,
+      candidates: candidates.map(toLoggedEmail),
+      sent_to_ai: sentToAi.map(toLoggedEmail),
+    });
+  if (error) console.error("Failed to write email scan log:", error.message);
+}
 
 /**
  * Scans a user's Gmail App Password-connected inbox for purchase
- * confirmations and turns them into items. Shared by the automatic
- * onboarding scan and the manual re-sync debug route - both need the same
- * connect -> search -> extract -> insert pipeline.
+ * confirmations and turns them into items (connect -> search -> extract ->
+ * insert). Throws on failure.
  */
 export async function scanAppPasswordGmailForItems(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<ScanAppPasswordResult> {
-  const admin = createAdminClient();
+  const candidates = await findCandidates(userId);
+  if (candidates.length === 0) return { candidatesFound: 0, added: 0 };
 
-  let candidates: PurchaseCandidateEmail[];
-  if (MOCK_GMAIL_ENABLED) {
-    candidates = MOCK_CANDIDATE_EMAILS;
-  } else {
-    const { data: connection } = await admin
-      .from("gmail_app_connections")
-      .select("email, app_password")
-      .eq("user_id", userId)
-      .maybeSingle();
+  const fresh = await filterAlreadyImported(supabase, userId, candidates);
+  await logScan(userId, candidates, fresh);
 
-    if (!connection) {
-      return {
-        connected: false,
-        candidatesFound: 0,
-        freshCandidates: 0,
-        extracted: 0,
-        added: 0,
-      };
-    }
+  const itemTypes = await getItemTypes(supabase, userId);
 
-    candidates = await findPurchaseCandidateEmailsViaImap(
-      connection.email,
-      connection.app_password,
-      { limit: MAX_SCAN_CANDIDATES },
-    );
-  }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("item_types")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (candidates.length === 0) {
-    return {
-      connected: true,
-      candidatesFound: 0,
-      freshCandidates: 0,
-      extracted: 0,
-      added: 0,
-    };
-  }
-
-  const { data: existingRows } = await supabase
-    .from("items")
-    .select("gmail_message_id")
-    .eq("user_id", userId)
-    .in(
-      "gmail_message_id",
-      candidates.map((c) => c.id),
-    );
-  const alreadyImported = new Set(
-    (existingRows ?? []).map((row) => row.gmail_message_id),
-  );
-  const fresh = candidates.filter((c) => !alreadyImported.has(c.id));
-
-  await admin.from("email_scan_logs").insert({
-    user_id: userId,
-    candidates: candidates.map(toLoggedEmail),
-    sent_to_ai: fresh.map(toLoggedEmail),
-  });
-
-  const batches: (typeof fresh)[] = [];
-  for (let i = 0; i < fresh.length; i += SCAN_BATCH_SIZE) {
-    batches.push(fresh.slice(i, i + SCAN_BATCH_SIZE));
-  }
-  // Run batches concurrently rather than sequentially - this is a
-  // serverless function with a wall-clock budget, and each batch is an
-  // independent AI call, so there's no reason to pay for their latency
-  // one after another.
-  const batchResults = await Promise.all(
-    batches.map((batch) =>
-      extractPurchasesFromEmails(batch, 20, profile?.item_types ?? []),
-    ),
-  );
-  const extracted = batchResults.flatMap((result) => result.items);
-
-  const { added } = await insertExtractedPurchases(
+  const extracted = await extractInBatches(fresh, itemTypes);
+  const insertedIds = await insertExtractedPurchases(
     supabase,
     userId,
     extracted,
-    profile?.item_types ?? [],
+    itemTypes,
   );
-
-  return {
-    connected: true,
-    candidatesFound: candidates.length,
-    freshCandidates: fresh.length,
-    extracted: extracted.length,
-    added,
-    sampleSubjects: fresh.slice(0, 20).map((c) => c.subject),
-  };
+  return { candidatesFound: candidates.length, added: insertedIds.length };
 }
