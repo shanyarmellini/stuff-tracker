@@ -9,15 +9,15 @@ type RecordPurchasesTool = {
 
 /**
  * Local-testing stand-in for the Anthropic call in extractPurchases.ts.
- * Ollama exposes an OpenAI-compatible /v1/chat/completions endpoint rather
- * than an Anthropic Messages-API one, so this translates the same tool
- * schema into OpenAI's function-calling shape and normalizes the response
- * back to the ToolOutput shape the rest of extractPurchases.ts expects.
+ * Ollama exposes an OpenAI-compatible endpoint rather than the Anthropic
+ * Messages API, so this translates the same tool schema into OpenAI's
+ * function-calling shape. Returns the raw tool arguments (or null) for the
+ * caller to validate.
  */
-export async function callOllamaForPurchases<ToolOutput>(
+export async function callOllamaForPurchases(
   userMessage: string,
   tool: RecordPurchasesTool,
-): Promise<ToolOutput> {
+): Promise<unknown> {
   const client = new OpenAI({
     baseURL: `${env.OLLAMA_BASE_URL}/v1`,
     apiKey: "ollama",
@@ -36,20 +36,14 @@ export async function callOllamaForPurchases<ToolOutput>(
         },
       },
     ],
-    tool_choice: {
-      type: "function",
-      function: { name: tool.name },
-    },
+    tool_choice: { type: "function", function: { name: tool.name } },
   });
 
   const toolCall = response.choices[0]?.message.tool_calls?.[0];
-  const rawArgs =
-    toolCall?.type === "function" ? toolCall.function.arguments : null;
-  if (!rawArgs) return { items: [] } as ToolOutput;
-
+  if (toolCall?.type !== "function") return null;
   try {
-    return JSON.parse(rawArgs) as ToolOutput;
+    return JSON.parse(toolCall.function.arguments);
   } catch {
-    return { items: [] } as ToolOutput;
+    return null;
   }
 }
