@@ -1,30 +1,30 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { z } from "zod";
-import {
-  APP_PASSWORD_LENGTH,
-  MAX_AGE,
-  MIN_AGE,
-} from "~/app/onboarding/constants";
+import { APP_PASSWORD_LENGTH } from "~/app/onboarding/constants";
 import { checkGmailAppPassword } from "~/lib/google/gmail-app-password";
 import { MOCK_GMAIL_ENABLED } from "~/lib/google/mock-emails";
 import { scanAppPasswordGmailForItems } from "~/lib/google/scan-app-password-purchases";
+import {
+  onboardingDetailsSchema,
+  type SaveScanCategoriesResult,
+  saveScanCategoriesForUser,
+} from "~/lib/profile/onboarding";
 import { createAdminClient } from "~/lib/supabase/admin";
 import { getCurrentUser } from "~/lib/supabase/server";
 
-const onboardingSchema = z.object({
-  item_types: z.array(z.string().trim().min(1)),
-  gender: z
-    .string()
-    .trim()
-    .nullable()
-    .transform((value) => value || null),
-  age: z.preprocess(
-    (value) => value || null,
-    z.coerce.number().int().min(MIN_AGE).max(MAX_AGE).nullable(),
-  ),
-});
+/**
+ * First onboarding step: saves the broad categories scanning is limited to,
+ * and seeds the dashboard categories with their subcategories. Runs before
+ * Gmail is connected so the first scan already uses them.
+ */
+export async function saveScanCategories(
+  categories: string[],
+): Promise<SaveScanCategoriesResult> {
+  const { supabase, user } = await getCurrentUser();
+  if (!user) return { ok: false, error: "You must be signed in." };
+  return saveScanCategoriesForUser(supabase, user.id, categories);
+}
 
 export type VerifyAppPasswordResult =
   | { ok: true }
@@ -99,18 +99,18 @@ export async function saveOnboarding(formData: FormData) {
   const { supabase, user } = await getCurrentUser();
   if (!user) redirect("/auth/signup");
 
-  const parsed = onboardingSchema.safeParse({
-    item_types: formData.getAll("item_types"),
+  const parsed = onboardingDetailsSchema.safeParse({
     gender: formData.get("gender"),
     age: formData.get("age"),
   });
   if (!parsed.success) redirect("/onboarding");
 
-  const { item_types, gender, age } = parsed.data;
+  // item_types and scan_categories were saved by saveScanCategories; upsert
+  // only overwrites the columns listed here.
+  const { gender, age } = parsed.data;
   const emailScanConsent = formData.get("email_scan_consent") === "on";
   const { error } = await supabase.from("profiles").upsert({
     user_id: user.id,
-    item_types,
     gender,
     age,
     onboarding_complete: true,

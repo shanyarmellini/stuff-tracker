@@ -7,7 +7,8 @@ import {
 import { formatPrice } from "~/lib/format";
 import { createAdminClient } from "~/lib/supabase/admin";
 import { formatJoinDate, maskAppPassword } from "../_lib";
-import { ScanPipelineTester } from "./scan-pipeline-tester";
+import { MockOnboarding } from "./mock-onboarding";
+import { MockScanTester, ScanPipelineTester } from "./scan-pipeline-tester";
 
 export const dynamic = "force-dynamic";
 
@@ -185,6 +186,7 @@ export default async function AdminUserPage({
     { data: connectionData },
     { data: scanLogData },
     { data: itemsData },
+    { data: profileData },
   ] = await Promise.all([
     supabase.auth.admin.getUserById(userId),
     supabase
@@ -206,6 +208,11 @@ export default async function AdminUserPage({
       )
       .eq("user_id", userId)
       .order("created_at", { ascending: false }),
+    supabase
+      .from("profiles")
+      .select("scan_categories")
+      .eq("user_id", userId)
+      .maybeSingle(),
   ]);
 
   if (userError || !userData?.user) {
@@ -262,7 +269,12 @@ export default async function AdminUserPage({
           )}
         </div>
 
+        <MockOnboarding
+          userId={userId}
+          scanCategories={profileData?.scan_categories ?? []}
+        />
         <ScanPipelineTester userId={userId} />
+        <MockScanTester userId={userId} />
 
         {scanLog ? (
           <>

@@ -1,9 +1,15 @@
 import { ImapFlow } from "imapflow";
 import { env } from "~/env";
 import type { PurchaseCandidateEmail } from "~/lib/ai/extractPurchases";
-import { scoreSubjectAsPurchase } from "~/lib/ai/jev";
+import { scoreEmailForCategories, scoreSubjectAsPurchase } from "~/lib/ai/jev";
+import {
+  describeScanCategories,
+  pickedItemKeywordPattern,
+} from "~/lib/categories/taxonomy";
+import { compactEmailForAi } from "~/lib/email/compact-for-ai";
 import { extractFirstImageUrl, stripHtml } from "~/lib/email/html";
 import { parseRawEmail } from "~/lib/email/mime";
+import { PRICE_PATTERN } from "~/lib/email/price";
 import { createAdminClient } from "~/lib/supabase/admin";
 import { errorMessage } from "~/lib/utils";
 
@@ -96,16 +102,6 @@ function looksLikeMarketingNoise(subject: string): boolean {
   return MARKETING_SUBJECT_PATTERNS.some((pattern) => pattern.test(subject));
 }
 
-// Matched against the body (only for emails that passed the subject filter).
-// Deliberately broad: every real purchase states a price somewhere, so only
-// emails with no money amount at all are dropped.
-const PRICE_PATTERN =
-  /[$€£¥₹]\s?\d|\d\s?[€£¥₹]|\d\s?(USD|EUR|GBP|CAD|AUD|JPY|INR)\b/i;
-
-function senderDomain(address: string): string {
-  return address.toLowerCase().split("@")[1] ?? address.toLowerCase();
-}
-
 function partition<T>(items: T[], keep: (item: T) => boolean): [T[], T[]] {
   const kept: T[] = [];
   const dropped: T[] = [];
@@ -117,50 +113,78 @@ export type EnvelopeSummary = { subject: string; from: string };
 
 type Envelope = EnvelopeSummary & { uid: number };
 
-type FullEmail = PurchaseCandidateEmail & { uid: number };
+export type FullEmail = PurchaseCandidateEmail & { uid: number };
 
-function toEnvelopeSummary({
+export function toEnvelopeSummary({
   subject,
   from,
 }: EnvelopeSummary): EnvelopeSummary {
   return { subject, from };
 }
 
-/**
- * Picks up to `limit` emails round-robin across sender domains (newest first
- * within each), so one prolific sender can't crowd out everyone else.
- */
-function pickFairlyAcrossSenders(
-  emails: FullEmail[],
-  limit: number,
-): FullEmail[] {
-  const byDomain = new Map<string, FullEmail[]>();
-  // Walk oldest -> newest by uid (regardless of the order the server streamed
-  // back) and prepend, so each domain's list ends up newest-first.
-  const ascending = [...emails].sort((a, b) => a.uid - b.uid);
-  for (const email of ascending) {
-    const domain = senderDomain(email.from);
-    const list = byDomain.get(domain);
-    if (list) list.unshift(email);
-    else byDomain.set(domain, [email]);
-  }
+// Any word-like token of 4+ letters/digits/hyphens, optionally prefixed by "#".
+const ORDER_TOKEN_PATTERN = /(#\s*)?\b([a-z0-9][a-z0-9-]{2,}[a-z0-9])\b/gi;
+const ORDER_KEYWORD_PATTERN = /\b(order|confirmation|invoice|receipt)\b/i;
 
-  const queues = [...byDomain.values()];
-  const picked: FullEmail[] = [];
-  for (let round = 0; picked.length < limit; round++) {
-    const roundPicks = queues
-      .filter((queue) => round < queue.length)
-      .map((queue) => queue[round]);
-    if (roundPicks.length === 0) break;
-    picked.push(...roundPicks.slice(0, limit - picked.length));
+/**
+ * Subject line only - the body is never searched for an order number.
+ * A "#"-prefixed token with a digit wins ("Order Confirmation #12345");
+ * otherwise, if the subject mentions an order, the first token with a digit
+ * ("Your order 112-1234567-1234567 has shipped"). Amounts like "$25" are
+ * skipped.
+ */
+function findOrderNumber(subject: string): string | null {
+  let fallback: string | null = null;
+  for (const match of subject.matchAll(ORDER_TOKEN_PATTERN)) {
+    const token = match[2];
+    if (!/\d/.test(token)) continue;
+    if (/[$€£¥₹]\s*$/.test(subject.slice(0, match.index))) continue;
+    if (match[1]) return token.toUpperCase();
+    fallback ??= token.toUpperCase();
   }
-  return picked;
+  return fallback && ORDER_KEYWORD_PATTERN.test(subject) ? fallback : null;
 }
 
-function buildGmailRawQuery(connectedAt: string): string {
+/**
+ * Keeps one email per order: only the exact sender address + order number in
+ * the subject line are compared. For each pair, the earliest email (lowest uid, usually the
+ * order confirmation) survives and every later one for that order is dropped,
+ * however many there are. Emails with no order number in the subject are
+ * always kept.
+ */
+function dedupeByOrderNumber<T extends Envelope>(
+  emails: T[],
+): [T[], (T & { orderNumber: string })[]] {
+  const orders = new Map<T, { key: string; orderNumber: string }>();
+  const firstUidByKey = new Map<string, number>();
+  for (const email of emails) {
+    const orderNumber = findOrderNumber(email.subject);
+    if (!orderNumber) continue;
+    const key = `${email.from.toLowerCase()}|${orderNumber}`;
+    orders.set(email, { key, orderNumber });
+    const firstUid = firstUidByKey.get(key);
+    if (firstUid === undefined || email.uid < firstUid) {
+      firstUidByKey.set(key, email.uid);
+    }
+  }
+
+  const kept: T[] = [];
+  const dropped: (T & { orderNumber: string })[] = [];
+  for (const email of emails) {
+    const order = orders.get(email);
+    if (order && firstUidByKey.get(order.key) !== email.uid) {
+      dropped.push({ ...email, orderNumber: order.orderNumber });
+    } else {
+      kept.push(email);
+    }
+  }
+  return [kept, dropped];
+}
+
+function buildDateLimitQuery(connectedAt: string): string {
   const earliest = new Date(connectedAt);
   earliest.setDate(earliest.getDate() - TIME_CONSTRAINT);
-  return `${PURCHASE_EMAIL_QUERY} after:${Math.floor(earliest.getTime() / 1000)}`;
+  return `after:${Math.floor(earliest.getTime() / 1000)}`;
 }
 
 async function openAllMailClient({
@@ -250,117 +274,387 @@ function filterSubjectNoise<T extends EnvelopeSummary>(
 }
 
 const JEV_PURCHASE_THRESHOLD = 0.5;
+// Lower than the subject threshold: dropping a real in-category purchase is
+// worse than sending Claude one extra email.
+const JEV_CATEGORY_THRESHOLD = 0.3;
 const JEV_CONCURRENCY = 10;
+// Item names and prices come first in trimmed emails; this is plenty for a
+// yes/no category question.
+const JEV_CONTENT_MAX_CHARS = 2000;
+
+export type JevFailure = { subject: string; reason: string };
+
+type JevFilterResult<T> = {
+  kept: T[];
+  dropped: T[];
+  failures: JevFailure[];
+};
+
+function normalizeSubject(subject: string): string {
+  return subject.trim().replace(/\s+/g, " ");
+}
+
+function describeJevError(err: unknown): string {
+  return err instanceof Error && err.name === "TimeoutError"
+    ? "Timed out"
+    : errorMessage(err);
+}
 
 /**
- * Subject-only AI pass after the regex filter. Keeps emails Jev thinks are
- * purchase confirmations. If Jev is not configured or a request fails, the
- * email is kept, so a Jev outage never drops a real purchase.
+ * Scores every key with Jev, at most JEV_CONCURRENCY at a time. Failed or
+ * timed-out keys get no score and are reported with `describe(key)`.
+ */
+async function scoreAllWithJev<K>(
+  keys: K[],
+  score: (key: K) => Promise<number>,
+  describe: (key: K) => string,
+): Promise<{ scores: Map<K, number>; failures: JevFailure[] }> {
+  const scores = new Map<K, number>();
+  const failures: JevFailure[] = [];
+
+  // Rolling pool: each worker picks up the next key as soon as its last
+  // request finishes, so one slow request never holds up the others.
+  let next = 0;
+  async function worker() {
+    while (next < keys.length) {
+      const key = keys[next++];
+      try {
+        scores.set(key, await score(key));
+      } catch (err) {
+        failures.push({
+          subject: describe(key),
+          reason: describeJevError(err),
+        });
+      }
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(JEV_CONCURRENCY, keys.length) }, worker),
+  );
+  return { scores, failures };
+}
+
+/**
+ * Subject-only AI pass after the subject regex filter. Keeps emails Jev thinks
+ * are purchase confirmations. Identical subjects get identical answers, so
+ * each unique subject is sent once and its score applies to every email with
+ * it. If Jev is not configured or a request fails or times out, the email is
+ * kept, so a Jev outage never drops a real purchase; failures are returned so
+ * the admin tool can show them.
  */
 async function filterSubjectsWithJev<T extends EnvelopeSummary>(
   emails: T[],
-): Promise<[T[], T[]]> {
-  if (!env.JEV_API_KEY) return [emails, []];
-
-  const kept: T[] = [];
-  const dropped: T[] = [];
-  for (let i = 0; i < emails.length; i += JEV_CONCURRENCY) {
-    const batch = emails.slice(i, i + JEV_CONCURRENCY);
-    const scores = await Promise.all(
-      batch.map((email) =>
-        scoreSubjectAsPurchase(email.subject).catch(() => null),
-      ),
-    );
-    batch.forEach((email, j) => {
-      const score = scores[j];
-      if (
-        score === null ||
-        score === undefined ||
-        score >= JEV_PURCHASE_THRESHOLD
-      ) {
-        kept.push(email);
-      } else {
-        dropped.push(email);
-      }
-    });
+): Promise<JevFilterResult<T> & { uniqueSubjects: number }> {
+  if (!env.JEV_API_KEY) {
+    return { kept: emails, dropped: [], uniqueSubjects: 0, failures: [] };
   }
-  return [kept, dropped];
+
+  const subjects = [
+    ...new Set(emails.map((email) => normalizeSubject(email.subject))),
+  ];
+  const { scores, failures } = await scoreAllWithJev(
+    subjects,
+    scoreSubjectAsPurchase,
+    (subject) => subject,
+  );
+
+  const [kept, dropped] = partition(emails, (email) => {
+    const score = scores.get(normalizeSubject(email.subject));
+    return score === undefined || score >= JEV_PURCHASE_THRESHOLD;
+  });
+  return { kept, dropped, uniqueSubjects: subjects.length, failures };
 }
 
-export type NoiseFilterDryRunResult = {
-  keywordSearch: { query: string; matchedCount: number };
-  timeConstraint: { query: string; days: number; matched: EnvelopeSummary[] };
-  subjectFilter: { kept: EnvelopeSummary[]; dropped: EnvelopeSummary[] };
-  jevFilter: {
+// What the keyword check and the Jev content check read: sender, subject
+// and the start of the trimmed body (item names and prices come first).
+function categoryCheckText(email: FullEmail): string {
+  return `From: ${email.from}\nSubject: ${email.subject}\n\n${compactEmailForAi(
+    email.bodyText,
+  ).text.slice(0, JEV_CONTENT_MAX_CHARS)}`;
+}
+
+/**
+ * Finds emails that name an item from a picked category ("mascara" with
+ * Beauty picked; see `itemKeywords` in the taxonomy). Never drops anything:
+ * a match only lets the email skip the Jev content check, and an email with
+ * no match goes to that check as usual, since items are often described in
+ * words not on any list.
+ */
+function findItemKeywordMatches(
+  emails: FullEmail[],
+  scanCategories: string[],
+): Set<FullEmail> {
+  const pattern = pickedItemKeywordPattern(scanCategories);
+  if (!pattern) return new Set();
+  return new Set(
+    emails.filter((email) => pattern.test(categoryCheckText(email))),
+  );
+}
+
+/**
+ * Item-level pass: Jev reads the trimmed body and says whether any purchased
+ * item fits the user's scan categories. Emails in `skip` (keyword matches)
+ * are kept without asking. Same safety rule as the subject pass: no Jev, or
+ * a failed request, keeps the email.
+ */
+async function filterContentForCategories(
+  emails: FullEmail[],
+  scanCategories: string[],
+  skip: Set<FullEmail>,
+): Promise<JevFilterResult<FullEmail> & { enabled: boolean; checked: number }> {
+  const enabled = scanCategories.length > 0 && !!env.JEV_API_KEY;
+  if (!enabled) {
+    return { kept: emails, dropped: [], failures: [], enabled, checked: 0 };
+  }
+
+  const toCheck = emails.filter((email) => !skip.has(email));
+  const categories = describeScanCategories(scanCategories);
+  const { scores, failures } = await scoreAllWithJev(
+    toCheck,
+    (email) => scoreEmailForCategories(categoryCheckText(email), categories),
+    (email) => email.subject,
+  );
+
+  const [kept, dropped] = partition(emails, (email) => {
+    const score = scores.get(email);
+    return score === undefined || score >= JEV_CATEGORY_THRESHOLD;
+  });
+  return { kept, dropped, failures, enabled, checked: toCheck.length };
+}
+
+// Each call returns the milliseconds since the previous call (or creation).
+function createLapTimer(): () => number {
+  let last = performance.now();
+  return () => {
+    const now = performance.now();
+    const ms = Math.round(now - last);
+    last = now;
+    return ms;
+  };
+}
+
+type FilterStep = { kept: EnvelopeSummary[]; dropped: EnvelopeSummary[] };
+
+type FilterStepsResult = {
+  subjectFilter: FilterStep;
+  jevFilter: FilterStep & {
     enabled: boolean;
+    uniqueSubjects: number;
+    failures: JevFailure[];
+  };
+  dedupe: {
     kept: EnvelopeSummary[];
-    dropped: EnvelopeSummary[];
+    dropped: (EnvelopeSummary & { orderNumber: string })[];
+  };
+  bodyFilter: FilterStep;
+  // Nothing is dropped here: `matched` emails skip the content check.
+  keywordFilter: {
+    scanCategories: string[];
+    matched: EnvelopeSummary[];
+    unmatched: EnvelopeSummary[];
+  };
+  contentFilter: FilterStep & {
+    enabled: boolean;
+    // Emails Jev was asked about; keyword matches skip the check.
+    checked: number;
+    failures: JevFailure[];
+  };
+  // How long each step took, in milliseconds.
+  timings: {
+    subjectFilter: number;
+    jevFilter: number;
+    dedupe: number;
+    download: number;
+    bodyFilter: number;
+    keywordFilter: number;
+    contentFilter: number;
+  };
+  candidates: FullEmail[];
+};
+
+/**
+ * Every step after the keyword search, shared by the real scan and the mock
+ * scan: subject noise filter -> Jev subject filter -> order-number dedupe ->
+ * `download` -> body price filter -> item keyword check -> Jev category
+ * content check. Everything up to and including the dedupe works on
+ * subject/sender only, so bodies are only downloaded for emails the dedupe
+ * keeps. The keyword and content steps only apply when the user picked scan
+ * categories.
+ */
+async function runFilterSteps<T extends Envelope>(
+  matched: T[],
+  scanCategories: string[],
+  download: (emails: T[]) => Promise<FullEmail[]>,
+): Promise<FilterStepsResult> {
+  const lap = createLapTimer();
+  const [subjectKept, subjectDropped] = filterSubjectNoise(matched);
+  const subjectFilterMs = lap();
+  // Jev only ever sees subject lines; no email has been downloaded yet.
+  const jev = await filterSubjectsWithJev(subjectKept);
+  const jevFilterMs = lap();
+  const [deduped, duplicates] = dedupeByOrderNumber(jev.kept);
+  const dedupeMs = lap();
+  const fullEmails = await download(deduped);
+  const downloadMs = lap();
+  const [bodyKept, bodyDropped] = partition(fullEmails, (email) =>
+    PRICE_PATTERN.test(email.bodyText),
+  );
+  const bodyFilterMs = lap();
+  const keywordMatches = findItemKeywordMatches(bodyKept, scanCategories);
+  const keywordFilterMs = lap();
+  const content = await filterContentForCategories(
+    bodyKept,
+    scanCategories,
+    keywordMatches,
+  );
+  const contentFilterMs = lap();
+
+  return {
+    subjectFilter: {
+      kept: subjectKept.map(toEnvelopeSummary),
+      dropped: subjectDropped.map(toEnvelopeSummary),
+    },
+    jevFilter: {
+      enabled: !!env.JEV_API_KEY,
+      kept: jev.kept.map(toEnvelopeSummary),
+      dropped: jev.dropped.map(toEnvelopeSummary),
+      uniqueSubjects: jev.uniqueSubjects,
+      failures: jev.failures,
+    },
+    dedupe: {
+      kept: deduped.map(toEnvelopeSummary),
+      dropped: duplicates.map((email) => ({
+        ...toEnvelopeSummary(email),
+        orderNumber: email.orderNumber,
+      })),
+    },
+    bodyFilter: {
+      kept: bodyKept.map(toEnvelopeSummary),
+      dropped: bodyDropped.map(toEnvelopeSummary),
+    },
+    keywordFilter: {
+      scanCategories,
+      matched: bodyKept
+        .filter((email) => keywordMatches.has(email))
+        .map(toEnvelopeSummary),
+      unmatched: bodyKept
+        .filter((email) => !keywordMatches.has(email))
+        .map(toEnvelopeSummary),
+    },
+    contentFilter: {
+      enabled: content.enabled,
+      checked: content.checked,
+      kept: content.kept.map(toEnvelopeSummary),
+      dropped: content.dropped.map(toEnvelopeSummary),
+      failures: content.failures,
+    },
+    timings: {
+      subjectFilter: subjectFilterMs,
+      jevFilter: jevFilterMs,
+      dedupe: dedupeMs,
+      download: downloadMs,
+      bodyFilter: bodyFilterMs,
+      keywordFilter: keywordFilterMs,
+      contentFilter: contentFilterMs,
+    },
+    candidates: content.kept,
+  };
+}
+
+export type ImapScanPipelineResult = Omit<FilterStepsResult, "timings"> & {
+  dateLimit: { query: string; days: number; matchedCount: number };
+  keywordSearch: { query: string; matched: EnvelopeSummary[] };
+  timings: FilterStepsResult["timings"] & {
+    connect: number;
+    dateLimit: number;
+    keywordSearch: number;
+    total: number;
   };
 };
 
 /**
- * Admin debug view of the start of the scan: how many emails match the
- * keyword query across all mail, how many of those fall inside the time
- * constraint, what the regex subject filter keeps, and what the Jev subject
- * filter keeps from that. Stops there - no bodies downloaded, no item
- * creation. Makes one Jev call per subject that passes the regex filter.
+ * Narrows a user's inbox down to likely purchase confirmations over IMAP
+ * (Gmail App Password), recording what every step kept so the admin debug
+ * tool can show it: date limit -> keyword search -> the shared filter steps
+ * (see `runFilterSteps`). Makes one Jev call per unique subject that passes
+ * the subject noise filter, plus one per email the content check reads;
+ * `candidates` still need AI extraction.
  */
-export async function runNoiseFilterDryRun(
+export async function runImapScanPipeline(
   connection: AppPasswordConnection,
-): Promise<NoiseFilterDryRunResult> {
-  const query = buildGmailRawQuery(connection.created_at);
+  scanCategories: string[],
+): Promise<ImapScanPipelineResult> {
+  const dateQuery = buildDateLimitQuery(connection.created_at);
+  // Same as running the keyword query over only the date-limited emails.
+  const keywordQuery = `${dateQuery} ${PURCHASE_EMAIL_QUERY}`;
+  const start = performance.now();
+  const lap = createLapTimer();
   return withAllMailLocked(connection, async (client) => {
-    const keywordUids = await client.search(
-      { gmailraw: PURCHASE_EMAIL_QUERY },
+    const connectMs = lap();
+    const dateUids = await client.search(
+      { gmailraw: dateQuery },
       { uid: true },
     );
-    const matched = await fetchEnvelopes(client, query);
-    const [kept, dropped] = filterSubjectNoise(matched);
-    const [jevKept, jevDropped] = await filterSubjectsWithJev(kept);
+    const dateLimitMs = lap();
+    const matched = await fetchEnvelopes(client, keywordQuery);
+    const keywordSearchMs = lap();
+    const { timings, ...steps } = await runFilterSteps(
+      matched,
+      scanCategories,
+      (emails) => fetchFullEmails(client, emails),
+    );
 
     return {
-      keywordSearch: {
-        query: PURCHASE_EMAIL_QUERY,
-        matchedCount: keywordUids ? keywordUids.length : 0,
-      },
-      timeConstraint: {
-        query,
+      dateLimit: {
+        query: dateQuery,
         days: TIME_CONSTRAINT,
+        matchedCount: dateUids ? dateUids.length : 0,
+      },
+      keywordSearch: {
+        query: keywordQuery,
         matched: matched.map(toEnvelopeSummary),
       },
-      subjectFilter: {
-        kept: kept.map(toEnvelopeSummary),
-        dropped: dropped.map(toEnvelopeSummary),
-      },
-      jevFilter: {
-        enabled: !!env.JEV_API_KEY,
-        kept: jevKept.map(toEnvelopeSummary),
-        dropped: jevDropped.map(toEnvelopeSummary),
+      ...steps,
+      timings: {
+        connect: connectMs,
+        dateLimit: dateLimitMs,
+        keywordSearch: keywordSearchMs,
+        ...timings,
+        total: Math.round(performance.now() - start),
       },
     };
   });
 }
 
-/**
- * Narrows a user's inbox down to likely purchase confirmations over IMAP
- * (Gmail App Password): keyword search within the time constraint -> subject
- * noise filter -> body price filter -> fair sender selection. Full bodies are
- * only downloaded for emails that passed the subject filter. The result still
- * needs AI extraction.
- */
+/** The real scan: just the emails `runImapScanPipeline` hands to the AI. */
 export async function findPurchaseCandidateEmailsViaImap(
   connection: AppPasswordConnection,
-  limit: number,
+  scanCategories: string[],
 ): Promise<PurchaseCandidateEmail[]> {
-  const query = buildGmailRawQuery(connection.created_at);
-  return withAllMailLocked(connection, async (client) => {
-    const [subjectKept] = filterSubjectNoise(
-      await fetchEnvelopes(client, query),
-    );
-    const [jevKept] = await filterSubjectsWithJev(subjectKept);
-    const bodyKept = (await fetchFullEmails(client, jevKept)).filter((email) =>
-      PRICE_PATTERN.test(email.bodyText),
-    );
-    return pickFairlyAcrossSenders(bodyKept, limit);
-  });
+  return (await runImapScanPipeline(connection, scanCategories)).candidates;
+}
+
+export type MockScanPipelineResult = Omit<FilterStepsResult, "timings"> & {
+  timings: FilterStepsResult["timings"] & { total: number };
+};
+
+/**
+ * Runs the same filter steps as the real scan over in-memory test emails
+ * (see ~/lib/google/mock-emails), which arrive with their bodies already, so
+ * there is no Gmail connection, search or download.
+ */
+export async function runMockScanPipeline(
+  emails: FullEmail[],
+  scanCategories: string[],
+): Promise<MockScanPipelineResult> {
+  const start = performance.now();
+  const { timings, ...steps } = await runFilterSteps(
+    emails,
+    scanCategories,
+    async (kept) => kept,
+  );
+  return {
+    ...steps,
+    timings: { ...timings, total: Math.round(performance.now() - start) },
+  };
 }

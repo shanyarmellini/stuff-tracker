@@ -13,26 +13,9 @@ import { saveOnboarding } from "./actions";
 import { MAX_AGE, MIN_AGE } from "./constants";
 
 type ValidationError = {
-  itemTypes?: string;
   gender?: string;
   age?: string;
 };
-
-const ITEM_TYPES = [
-  "Skincare",
-  "Makeup",
-  "Hair",
-  "Fragrance",
-  "Tools",
-  "Clothing",
-  "Electronics",
-  "Books",
-  "Fitness",
-  "Misc",
-];
-
-const MAX_ITEM_TYPES = 20;
-const MAX_OTHER_LENGTH = 30;
 
 const GENDERS = ["Woman", "Man", "Non-binary", "Prefer not to say"];
 
@@ -73,17 +56,6 @@ function ageRangeError(age: number): string | null {
   if (age < MIN_AGE) return `You must be at least ${MIN_AGE} years old.`;
   if (age > MAX_AGE) return `The maximum age is ${MAX_AGE}.`;
   return null;
-}
-
-function pillClass(active: boolean, disabled: boolean) {
-  return cn(
-    "rounded-full border px-4 py-1.5 font-ui text-sm transition-colors",
-    active
-      ? "border-brand bg-brand text-brand-foreground"
-      : "border-input bg-card text-muted-foreground hover:border-brand hover:text-brand-strong",
-    disabled &&
-      "cursor-not-allowed opacity-40 hover:border-input hover:text-muted-foreground",
-  );
 }
 
 function DobSelect({
@@ -127,52 +99,17 @@ function DobSelect({
   );
 }
 
-export function OnboardingForm() {
-  const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
-  const [otherActive, setOtherActive] = useState(false);
-  const [otherText, setOtherText] = useState("");
-  const [otherItems, setOtherItems] = useState<string[]>([]);
+export function OnboardingForm({
+  onSubmit = saveOnboarding,
+}: {
+  // Where the answers are saved; the admin mock onboarding saves to another
+  // user instead of the signed-in one.
+  onSubmit?: (formData: FormData) => Promise<void>;
+} = {}) {
   const [errors, setErrors] = useState<ValidationError>({});
   const [dobMonth, setDobMonth] = useState("");
   const [dobDay, setDobDay] = useState("");
   const [dobYear, setDobYear] = useState("");
-
-  const totalItemTypes = selectedTypes.length + otherItems.length;
-  const itemTypesMaxed = totalItemTypes >= MAX_ITEM_TYPES;
-
-  function toggleType(type: string) {
-    setSelectedTypes((prev) => {
-      if (prev.includes(type)) return prev.filter((t) => t !== type);
-      if (totalItemTypes >= MAX_ITEM_TYPES) return prev;
-      return [...prev, type];
-    });
-  }
-
-  function toggleOther() {
-    if (otherActive) {
-      setOtherActive(false);
-      setOtherText("");
-      setOtherItems([]);
-    } else {
-      setOtherActive(true);
-    }
-  }
-
-  /** Adds the typed "Other" text as an item; returns the resulting list. */
-  function commitOtherItem(): string[] {
-    const trimmed = otherText.trim();
-    setOtherText("");
-    if (!trimmed || otherItems.includes(trimmed) || itemTypesMaxed) {
-      return otherItems;
-    }
-    const next = [...otherItems, trimmed];
-    setOtherItems(next);
-    return next;
-  }
-
-  function removeOtherItem(item: string) {
-    setOtherItems((prev) => prev.filter((i) => i !== item));
-  }
 
   const dobComplete = dobMonth !== "" && dobDay !== "" && dobYear.length === 4;
   const dobAge = dobComplete
@@ -185,15 +122,9 @@ export function OnboardingForm() {
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-
-    const finalOtherItems = commitOtherItem();
-
-    const allItemTypes = selectedTypes.length + finalOtherItems.length;
     const gender = formData.get("gender") as string | null;
 
     const newErrors: ValidationError = {};
-    if (allItemTypes === 0)
-      newErrors.itemTypes = "Please select at least one item type.";
     if (!gender) newErrors.gender = "Please select how you identify.";
     const dobProblem =
       dobAge === null
@@ -208,126 +139,17 @@ export function OnboardingForm() {
 
     setErrors({});
     formData.set("age", String(dobAge));
-    for (const item of finalOtherItems) {
-      formData.append("item_types", item);
-    }
-    await saveOnboarding(formData);
+    await onSubmit(formData);
   }
 
   return (
     <div className={ONBOARDING_CARD_CLASS}>
-      <h1 className={ONBOARDING_TITLE_CLASS}>Welcome!</h1>
+      <h1 className={ONBOARDING_TITLE_CLASS}>Almost done!</h1>
       <p className="mb-8 font-ui text-sm text-subtle-foreground">
         Tell us a bit about yourself so we can tailor your experience.
       </p>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-8">
-        {selectedTypes.map((type) => (
-          <input key={type} type="hidden" name="item_types" value={type} />
-        ))}
-
-        <div>
-          <p className="mb-3 font-ui text-sm font-medium text-foreground">
-            What kind of items do you usually buy?
-            <span className="ml-1 font-normal text-subtle-foreground">
-              (pick all that apply)
-            </span>
-            <br />
-            <span className="font-normal text-subtle-foreground">
-              Max {MAX_ITEM_TYPES} categories
-            </span>
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {ITEM_TYPES.map((type) => {
-              const active = selectedTypes.includes(type);
-              const disabled = !active && itemTypesMaxed;
-              return (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => toggleType(type)}
-                  disabled={disabled}
-                  className={pillClass(active, disabled)}
-                >
-                  {type}
-                </button>
-              );
-            })}
-            <button
-              type="button"
-              onClick={toggleOther}
-              disabled={!otherActive && itemTypesMaxed}
-              className={pillClass(otherActive, !otherActive && itemTypesMaxed)}
-            >
-              Other
-            </button>
-          </div>
-          {itemTypesMaxed && (
-            <p className="mt-2 font-ui text-xs text-subtle-foreground">
-              You&apos;ve reached the maximum of {MAX_ITEM_TYPES} categories.
-            </p>
-          )}
-          {errors.itemTypes && (
-            <p className="mt-2 font-ui text-xs text-destructive">
-              {errors.itemTypes}
-            </p>
-          )}
-          {otherActive && (
-            <div className="mt-2">
-              {otherItems.length > 0 && (
-                <div className="mb-2 flex flex-wrap gap-2">
-                  {otherItems.map((item) => (
-                    <span
-                      key={item}
-                      className="flex items-center gap-1.5 rounded-full border border-brand bg-brand px-3 py-1 font-ui text-sm text-brand-foreground"
-                    >
-                      {item}
-                      <button
-                        type="button"
-                        onClick={() => removeOtherItem(item)}
-                        className="leading-none opacity-70 hover:opacity-100"
-                        aria-label={`Remove ${item}`}
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-              {otherText.length >= MAX_OTHER_LENGTH && (
-                <p className="mb-1 font-ui text-xs text-destructive">
-                  The {MAX_OTHER_LENGTH} character limit has been reached.
-                </p>
-              )}
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="e.g. Vintage clothing"
-                  maxLength={MAX_OTHER_LENGTH}
-                  value={otherText}
-                  disabled={itemTypesMaxed}
-                  onChange={(e) => setOtherText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      commitOtherItem();
-                    }
-                  }}
-                  className={cn(FIELD_INPUT_CLASS, "flex-1 px-4")}
-                />
-                <button
-                  type="button"
-                  onClick={() => commitOtherItem()}
-                  disabled={itemTypesMaxed}
-                  className="rounded-xl border border-input bg-card px-4 py-2.5 font-ui text-sm text-muted-foreground transition-colors hover:border-brand hover:text-brand-strong disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-input disabled:hover:text-muted-foreground"
-                >
-                  Add
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
         <div>
           <label htmlFor="gender" className={FIELD_LABEL_CLASS}>
             How do you identify?

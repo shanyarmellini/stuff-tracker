@@ -19,17 +19,27 @@ function sanitizeLink(link: string | null): string | null {
   return trimmed;
 }
 
-/** The user's saved categories (`profiles.item_types`), or [] if unset. */
-export async function getItemTypes(
+export type ScanProfile = {
+  // The user's dashboard categories (`profiles.item_types`).
+  itemTypes: string[];
+  // The broad categories scanning is limited to; [] means no limit.
+  scanCategories: string[];
+};
+
+/** The profile fields the scan needs, or empty lists if unset. */
+export async function getScanProfile(
   supabase: SupabaseClient,
   userId: string,
-): Promise<string[]> {
+): Promise<ScanProfile> {
   const { data } = await supabase
     .from("profiles")
-    .select("item_types")
+    .select("item_types, scan_categories")
     .eq("user_id", userId)
     .maybeSingle();
-  return data?.item_types ?? [];
+  return {
+    itemTypes: data?.item_types ?? [],
+    scanCategories: data?.scan_categories ?? [],
+  };
 }
 
 /** Drops candidates whose Gmail message already produced items. */
@@ -71,10 +81,11 @@ export function splitIntoAiBatches(
 export async function extractInBatches(
   emails: PurchaseCandidateEmail[],
   existingCategories: string[],
+  allowedCategories: string[] = [],
 ): Promise<ExtractedPurchase[]> {
   const results = await Promise.all(
     splitIntoAiBatches(emails).map((batch) =>
-      extractPurchasesFromEmails(batch, existingCategories),
+      extractPurchasesFromEmails(batch, existingCategories, allowedCategories),
     ),
   );
   return results.flat();

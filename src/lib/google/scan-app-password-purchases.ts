@@ -1,41 +1,48 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { PurchaseCandidateEmail } from "~/lib/ai/extractPurchases";
 import {
+  describePurchaseExtractionRequest,
+  type ExtractedPurchase,
+  type ExtractionBatchPreview,
+  type PurchaseCandidateEmail,
+  type PurchaseExtractionRequest,
+  previewExtractionBatch,
+} from "~/lib/ai/extractPurchases";
+import { allowedCategoriesFor } from "~/lib/categories/taxonomy";
+import {
+  type EnvelopeSummary,
   findPurchaseCandidateEmailsViaImap,
+  type ImapScanPipelineResult,
   loadAppPasswordConnection,
-  type NoiseFilterDryRunResult,
-  runNoiseFilterDryRun,
+  type MockScanPipelineResult,
+  runImapScanPipeline,
+  runMockScanPipeline,
+  toEnvelopeSummary,
 } from "~/lib/google/gmail-app-password";
-import {
-  MOCK_CANDIDATE_EMAILS,
-  MOCK_GMAIL_ENABLED,
-} from "~/lib/google/mock-emails";
+import { MOCK_EMAILS, MOCK_GMAIL_ENABLED } from "~/lib/google/mock-emails";
 import {
   extractInBatches,
   filterAlreadyImported,
-  getItemTypes,
+  getScanProfile,
   insertExtractedPurchases,
+  type ScanProfile,
+  splitIntoAiBatches,
 } from "~/lib/items/import-purchases";
 import { createAdminClient } from "~/lib/supabase/admin";
-
-// This is a one-time full-history import (unlike the incremental OAuth
-// sync-purchases route), so the cap is much higher. These are survivors
-// after the IMAP layer has already dropped marketing noise, so each slot is
-// a likely-real purchase. Raised 100 -> 200 after real scans hit the cap
-// exactly, cutting off older receipts from low-frequency merchants.
-const MAX_SCAN_CANDIDATES = 200;
 
 type ScanAppPasswordResult = { added: number };
 
 async function findCandidates(
   userId: string,
+  scanCategories: string[],
 ): Promise<PurchaseCandidateEmail[]> {
-  if (MOCK_GMAIL_ENABLED) return MOCK_CANDIDATE_EMAILS;
+  if (MOCK_GMAIL_ENABLED) {
+    return (await runMockScanPipeline(MOCK_EMAILS, scanCategories)).candidates;
+  }
 
   const connection = await loadAppPasswordConnection(userId);
   if (!connection) return [];
 
-  return findPurchaseCandidateEmailsViaImap(connection, MAX_SCAN_CANDIDATES);
+  return findPurchaseCandidateEmailsViaImap(connection, scanCategories);
 }
 
 // Shape persisted into email_scan_logs (candidates/sent_to_ai jsonb columns)
@@ -73,15 +80,18 @@ export async function scanAppPasswordGmailForItems(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<ScanAppPasswordResult> {
-  const candidates = await findCandidates(userId);
+  const { itemTypes, scanCategories } = await getScanProfile(supabase, userId);
+  const candidates = await findCandidates(userId, scanCategories);
   if (candidates.length === 0) return { added: 0 };
 
   const fresh = await filterAlreadyImported(supabase, userId, candidates);
   await logScan(userId, candidates, fresh);
 
-  const itemTypes = await getItemTypes(supabase, userId);
-
-  const extracted = await extractInBatches(fresh, itemTypes);
+  const extracted = await extractInBatches(
+    fresh,
+    itemTypes,
+    allowedCategoriesFor(scanCategories, itemTypes),
+  );
   const insertedIds = await insertExtractedPurchases(
     supabase,
     userId,
@@ -91,15 +101,117 @@ export async function scanAppPasswordGmailForItems(
   return { added: insertedIds.length };
 }
 
+// The request (provider, model, tool) is identical for every batch, so it's
+// returned once; only the user message differs per batch.
+type AiPreview = PurchaseExtractionRequest & {
+  alreadyImported: EnvelopeSummary[];
+  existingCategories: string[];
+  // Empty when the user has no scan categories (no limit).
+  allowedCategories: string[];
+  batches: (ExtractionBatchPreview & { emails: EnvelopeSummary[] })[];
+};
+
+function buildAiPreview(
+  emails: PurchaseCandidateEmail[],
+  alreadyImported: EnvelopeSummary[],
+  { itemTypes, scanCategories }: ScanProfile,
+): AiPreview {
+  const allowedCategories = allowedCategoriesFor(scanCategories, itemTypes);
+  return {
+    ...describePurchaseExtractionRequest(itemTypes, allowedCategories),
+    alreadyImported,
+    existingCategories: itemTypes,
+    allowedCategories,
+    batches: splitIntoAiBatches(emails).map((batch) => ({
+      ...previewExtractionBatch(batch),
+      emails: batch.map(toEnvelopeSummary),
+    })),
+  };
+}
+
+// Full email bodies stay on the server; the admin page only gets summaries
+// plus the exact trimmed messages that would be sent to the AI.
+export type ScanPipelineTestResult = Omit<
+  ImapScanPipelineResult,
+  "candidates"
+> & { ai: AiPreview };
+
 /**
- * Dry run of the start of `scanAppPasswordGmailForItems` for the admin debug
- * tool, stopping after the Jev subject filter. Makes one Jev call per subject
- * that passes the regex filter and creates no items.
+ * Dry run of `scanAppPasswordGmailForItems` for the admin debug tool: every
+ * filter, then the exact trimmed AI requests that would be sent. Makes the
+ * same Jev calls as the real scan, no extraction AI call, and creates no
+ * items.
  */
 export async function testAppPasswordScanPipeline(
+  supabase: SupabaseClient,
   userId: string,
-): Promise<NoiseFilterDryRunResult | null> {
+): Promise<ScanPipelineTestResult | null> {
   const connection = await loadAppPasswordConnection(userId);
   if (!connection) return null;
-  return runNoiseFilterDryRun(connection);
+
+  const profile = await getScanProfile(supabase, userId);
+  const { candidates, ...steps } = await runImapScanPipeline(
+    connection,
+    profile.scanCategories,
+  );
+  const fresh = await filterAlreadyImported(supabase, userId, candidates);
+  const alreadyImported = candidates
+    .filter((email) => !fresh.includes(email))
+    .map(toEnvelopeSummary);
+
+  return {
+    ...steps,
+    ai: buildAiPreview(fresh, alreadyImported, profile),
+  };
+}
+
+export type MockScanTestResult = Omit<MockScanPipelineResult, "candidates"> & {
+  mockEmails: (EnvelopeSummary & { expected: string })[];
+  ai: AiPreview;
+  // Only filled in when the admin chose to run extraction. Nothing is saved.
+  extracted: (ExtractedPurchase & { emailSubject: string })[] | null;
+};
+
+/**
+ * Runs the built-in test emails (~/lib/google/mock-emails) through the same
+ * filters and AI trimming as the real scan, for the admin debug tool. Uses
+ * this user's saved categories and scan categories. The already-imported
+ * check is skipped, since test emails are never imported. With
+ * `runExtraction`, also calls the
+ * extraction AI and returns what it found, without creating any items.
+ */
+export async function testMockScanPipeline(
+  supabase: SupabaseClient,
+  userId: string,
+  runExtraction: boolean,
+): Promise<MockScanTestResult> {
+  const profile = await getScanProfile(supabase, userId);
+  const { candidates, ...steps } = await runMockScanPipeline(
+    MOCK_EMAILS,
+    profile.scanCategories,
+  );
+  const extracted = runExtraction
+    ? await extractInBatches(
+        candidates,
+        profile.itemTypes,
+        allowedCategoriesFor(profile.scanCategories, profile.itemTypes),
+      )
+    : null;
+  const subjectById = new Map(
+    MOCK_EMAILS.map((email) => [email.id, email.subject]),
+  );
+
+  return {
+    ...steps,
+    mockEmails: MOCK_EMAILS.map((email) => ({
+      ...toEnvelopeSummary(email),
+      expected: email.expected,
+    })),
+    ai: buildAiPreview(candidates, [], profile),
+    extracted:
+      extracted?.map((item) => ({
+        ...item,
+        emailSubject: subjectById.get(item.emailId) ?? "",
+      })) ?? null,
+  };
 }
