@@ -1,12 +1,13 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 import { env } from "~/env";
-import { isAdmin } from "~/lib/auth";
+import { isBlockedByWaitlist } from "~/lib/early-access";
 
-// While the app is gated behind a waitlist, only the admin account (me) may
-// use anything beyond the landing page. Everyone else is bounced to "/".
+// While the app is gated behind a waitlist, only early-access accounts (see
+// ~/lib/early-access) may use anything beyond the landing page and sign-in.
+// Everyone else is bounced to "/".
 const PUBLIC_PATHS = ["/", "/api/waitlist"];
-const ADMIN_AUTH_PATHS = ["/auth/login", "/auth/callback"];
+const SIGN_IN_PATHS = ["/auth/login", "/auth/callback"];
 
 function matchesAny(pathname: string, paths: string[]) {
   return paths.some(
@@ -49,15 +50,7 @@ export async function proxy(request: NextRequest) {
     return response;
   }
 
-  // Local dev only: skip the admin-only gate so any account you sign up with
-  // locally can reach the dashboard/onboarding to test end-to-end flows
-  // (e.g. Gmail app password scanning). NODE_ENV is only ever not
-  // "production" for `next dev`, never for a built/deployed app.
-  if (env.NODE_ENV !== "production") {
-    return response;
-  }
-
-  if (isAdmin(user) || matchesAny(pathname, ADMIN_AUTH_PATHS)) {
+  if (!isBlockedByWaitlist(user) || matchesAny(pathname, SIGN_IN_PATHS)) {
     return response;
   }
 

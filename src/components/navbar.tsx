@@ -8,15 +8,27 @@ import { Button } from "~/components/ui/button";
 import { isAdmin } from "~/lib/auth";
 import { cn } from "~/lib/utils";
 
-// While the app is waitlist-gated, the nav links are only shown to the admin.
-const ADMIN_NAV_LINKS = [
-  { href: "/dashboard", label: "Home" },
-  { href: "/admin", label: "Admin" },
+// While the app is waitlist-gated, nav links are only shown to early-access
+// accounts, and the Admin link only to the admin.
+const NAV_LINKS = [
+  { href: "/dashboard", label: "Home", adminOnly: false },
+  { href: "/admin", label: "Admin", adminOnly: true },
 ];
 
-export function Navbar({ user, isDev }: { user: User | null; isDev: boolean }) {
+export function Navbar({
+  user,
+  hasAccess,
+  isDev,
+}: {
+  user: User | null;
+  // Past the waitlist gate; worked out on the server (see ~/lib/early-access).
+  hasAccess: boolean;
+  isDev: boolean;
+}) {
   const pathname = usePathname();
-  const showAdminLinks = isAdmin(user);
+  const links = hasAccess
+    ? NAV_LINKS.filter((link) => !link.adminOnly || isAdmin(user))
+    : [];
 
   return (
     <nav className="border-b border-border bg-background">
@@ -27,9 +39,9 @@ export function Navbar({ user, isDev }: { user: User | null; isDev: boolean }) {
         >
           Stuff Tracker
         </Link>
-        {showAdminLinks && (
+        {links.length > 0 && (
           <div className="flex flex-1 items-center gap-3 sm:gap-4">
-            {ADMIN_NAV_LINKS.map((link) => (
+            {links.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
@@ -51,8 +63,14 @@ export function Navbar({ user, isDev }: { user: User | null; isDev: boolean }) {
               <Link href="/dashboard">Go to Dashboard</Link>
             </Button>
           )}
-          {showAdminLinks && (
+          {user ? (
             <SignOutButton variant="nav">Sign out</SignOutButton>
+          ) : (
+            pathname !== "/auth/login" && (
+              <Button asChild variant="outline" size="sm">
+                <Link href="/auth/login">Sign in</Link>
+              </Button>
+            )
           )}
         </div>
       </div>

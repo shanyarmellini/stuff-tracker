@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Patrick_Hand_SC, Poppins } from "next/font/google";
 import { Navbar } from "~/components/navbar";
 import { env } from "~/env";
+import { isBlockedByWaitlist } from "~/lib/early-access";
 import { getCurrentUser } from "~/lib/supabase/server";
 import "./globals.css";
 
@@ -37,7 +38,11 @@ export default async function RootLayout({
       <body
         className={`${inter.variable} ${patrickHandSC.variable} ${poppins.variable} font-sans`}
       >
-        <Navbar user={user} isDev={env.NODE_ENV !== "production"} />
+        <Navbar
+          user={user}
+          hasAccess={!!user && !isBlockedByWaitlist(user)}
+          isDev={env.NODE_ENV !== "production"}
+        />
         {children}
       </body>
     </html>

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isBlockedByWaitlist, WAITLIST_ERROR } from "~/lib/early-access";
 import { createClient } from "~/lib/supabase/server";
 
 // Only same-origin paths: "//host" and "/\host" are treated by browsers as
@@ -13,7 +14,13 @@ export async function GET(request: Request) {
 
   if (code) {
     const supabase = await createClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+    if (!error && isBlockedByWaitlist(data.user)) {
+      await supabase.auth.signOut();
+      return NextResponse.redirect(
+        `${origin}/auth/login?error=${encodeURIComponent(WAITLIST_ERROR)}`,
+      );
+    }
     if (!error) {
       return NextResponse.redirect(
         `${origin}${safeNextPath(searchParams.get("next"))}`,

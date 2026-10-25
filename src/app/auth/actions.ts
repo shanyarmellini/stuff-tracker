@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { isBlockedByWaitlist, WAITLIST_ERROR } from "~/lib/early-access";
 import { createClient } from "~/lib/supabase/server";
 
 const credentialsSchema = z.object({
@@ -32,6 +33,11 @@ async function authenticate(formData: FormData, mode: AuthMode) {
       ? await supabase.auth.signInWithPassword(parsed.data)
       : await supabase.auth.signUp(parsed.data);
   if (error) redirectWithError(mode.page, error.message);
+
+  if (mode === LOGIN && isBlockedByWaitlist(data.user)) {
+    await supabase.auth.signOut();
+    redirectWithError(mode.page, WAITLIST_ERROR);
+  }
 
   if (mode === SIGNUP && !data.session) {
     // Email confirmation is required before the user can sign in.

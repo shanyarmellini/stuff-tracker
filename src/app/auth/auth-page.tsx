@@ -9,9 +9,9 @@ const MODES = {
       action: login,
       submitLabel: "Sign in",
       passwordAutoComplete: "current-password",
-      switchPrompt: "Don't have an account?",
-      switchHref: "/auth/signup",
-      switchLabel: "Sign up",
+      switchPrompt: "Not on the list yet?",
+      switchHref: "/",
+      switchLabel: "Join the waitlist",
     },
   },
   signup: {
