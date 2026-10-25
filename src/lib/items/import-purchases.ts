@@ -9,8 +9,6 @@ const EMAILS_PER_AI_BATCH = 8;
 
 const LINK_FORMAT = /^(https?:\/\/)?([^./\s]+\.)+[^./\s]{2,}(\/\S*)?$/i;
 
-type ItemSource = "gmail_ai" | "manual_ai";
-
 function sanitizeLink(link: string | null): string | null {
   if (!link) return null;
   const trimmed = link.trim();
@@ -79,7 +77,7 @@ export async function extractInBatches(
       extractPurchasesFromEmails(batch, existingCategories),
     ),
   );
-  return results.flatMap((result) => result.items);
+  return results.flat();
 }
 
 async function nextTopSortOrder(supabase: SupabaseClient, userId: string) {
@@ -120,10 +118,9 @@ async function appendNewCategories(
 
 /**
  * Inserts AI-extracted purchases into `items` and appends any newly-seen
- * categories to `profiles.item_types`. Gmail items de-dupe on
+ * categories to `profiles.item_types`. Items de-dupe on
  * `user_id,gmail_message_id,name,price` (not just the message id, since one
- * email can contain several products); manually pasted emails have no
- * message id to store. Returns the ids of the rows actually inserted and
+ * email can contain several products). Returns the ids of the rows actually inserted and
  * throws on a database error.
  */
 export async function insertExtractedPurchases(
@@ -131,7 +128,6 @@ export async function insertExtractedPurchases(
   userId: string,
   extracted: ExtractedPurchase[],
   existingItemTypes: string[],
-  source: ItemSource = "gmail_ai",
 ): Promise<string[]> {
   if (extracted.length === 0) return [];
 
@@ -145,8 +141,8 @@ export async function insertExtractedPurchases(
     photo_url: item.imageUrl,
     quantity: item.quantity,
     sort_order: topSortOrder - index,
-    source,
-    gmail_message_id: source === "gmail_ai" ? item.emailId : null,
+    source: "gmail_ai",
+    gmail_message_id: item.emailId,
   }));
 
   const { data: inserted, error } = await supabase

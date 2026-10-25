@@ -5,10 +5,10 @@ import { PILL_BUTTON } from "../_lib/styles";
 
 export function DashboardToolbar({
   onOpenSidebar,
-  onOpenEmail,
+  onOpenGmail,
 }: {
   onOpenSidebar: () => void;
-  onOpenEmail: () => void;
+  onOpenGmail: () => void;
 }) {
   return (
     <div className="flex shrink-0 flex-col gap-2 px-4 py-3 min-[400px]:flex-row min-[400px]:items-center min-[400px]:justify-between sm:px-8">
@@ -27,7 +27,7 @@ export function DashboardToolbar({
         >
           Account
         </Link>
-        <button type="button" onClick={onOpenEmail} className={PILL_BUTTON}>
+        <button type="button" onClick={onOpenGmail} className={PILL_BUTTON}>
           Email
         </button>
         <Link

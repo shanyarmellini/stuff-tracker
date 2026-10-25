@@ -6,7 +6,7 @@ import { callOllamaForPurchases } from "~/lib/ai/ollama";
 const ANTHROPIC_MODEL = "claude-haiku-4-5";
 const MAX_OUTPUT_TOKENS = 8192;
 const MAX_EMAIL_BODY_CHARS = 12000;
-export const MAX_ITEMS_PER_EMAIL = 20;
+const MAX_ITEMS_PER_EMAIL = 20;
 
 export type PurchaseCandidateEmail = {
   id: string;
@@ -128,7 +128,7 @@ async function callAnthropicForPurchases(
   return toolUse?.type === "tool_use" ? toolUse.input : null;
 }
 
-function buildUserMessage(emails: PurchaseCandidateEmail[]): string {
+export function buildUserMessage(emails: PurchaseCandidateEmail[]): string {
   const emailBlocks = emails
     .map(
       (email) =>
@@ -142,22 +142,21 @@ export type PurchaseExtractionRequest = {
   provider: typeof env.AI_PROVIDER;
   model: string;
   tool: ReturnType<typeof buildRecordPurchasesTool>;
-  userMessage: string;
 };
 
 /**
- * The exact request `extractPurchasesFromEmails` would send for these emails,
- * without sending it. Used by the admin scan debug tool.
+ * The provider, model and tool (instructions + schema) that
+ * `extractPurchasesFromEmails` sends with every batch; pair with
+ * `buildUserMessage` for the per-batch part. Used by the admin scan debug
+ * tool.
  */
 export function describePurchaseExtractionRequest(
-  emails: PurchaseCandidateEmail[],
-  existingCategories: string[] = [],
+  existingCategories: string[],
 ): PurchaseExtractionRequest {
   return {
     provider: env.AI_PROVIDER,
     model: env.AI_PROVIDER === "ollama" ? env.OLLAMA_MODEL : ANTHROPIC_MODEL,
     tool: buildRecordPurchasesTool(existingCategories),
-    userMessage: buildUserMessage(emails),
   };
 }
 
@@ -205,8 +204,8 @@ function mergeDuplicates(items: ExtractedPurchase[]): ExtractedPurchase[] {
 export async function extractPurchasesFromEmails(
   emails: PurchaseCandidateEmail[],
   existingCategories: string[] = [],
-): Promise<{ items: ExtractedPurchase[]; truncated: boolean }> {
-  if (emails.length === 0) return { items: [], truncated: false };
+): Promise<ExtractedPurchase[]> {
+  if (emails.length === 0) return [];
 
   const tool = buildRecordPurchasesTool(existingCategories);
   const userMessage = buildUserMessage(emails);
@@ -234,8 +233,5 @@ export async function extractPurchasesFromEmails(
       totalByEmailId.get(item.email_id) === 1,
     ),
   );
-  return {
-    items: mergeDuplicates(items),
-    truncated: capped.length < valid.length,
-  };
+  return mergeDuplicates(items);
 }

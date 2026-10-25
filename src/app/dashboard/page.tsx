@@ -6,7 +6,7 @@ import { cn } from "~/lib/utils";
 import { AddItemModal } from "./_components/add-item-modal";
 import { CategorySidebar } from "./_components/category-sidebar";
 import { DashboardToolbar } from "./_components/dashboard-toolbar";
-import { EmailImportModal } from "./_components/email-import-modal";
+import { GmailImportModal } from "./_components/gmail-import-modal";
 import { ItemDetailModal } from "./_components/item-detail-modal";
 import { ItemGrid } from "./_components/item-grid";
 import { StatsRow } from "./_components/stats-row";
@@ -23,7 +23,7 @@ export default function DashboardPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
-  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [showGmailModal, setShowGmailModal] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [brokenPhotoIds, setBrokenPhotoIds] = useState<Set<string>>(
     () => new Set(),
@@ -76,7 +76,7 @@ export default function DashboardPage() {
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <DashboardToolbar
             onOpenSidebar={() => setSidebarOpen(true)}
-            onOpenEmail={() => setShowEmailModal(true)}
+            onOpenGmail={() => setShowGmailModal(true)}
           />
 
           <div className="flex-1 overflow-y-auto px-4 pb-10 sm:px-8">
@@ -147,13 +147,11 @@ export default function DashboardPage() {
         />
       )}
 
-      {showEmailModal && (
-        <EmailImportModal
+      {showGmailModal && (
+        <GmailImportModal
           email={data.email}
-          extractionsUsed={data.extractionsUsed}
           onItemsChanged={data.refreshItems}
-          onUsageChanged={data.refreshExtractionsUsed}
-          onClose={() => setShowEmailModal(false)}
+          onClose={() => setShowGmailModal(false)}
         />
       )}
 

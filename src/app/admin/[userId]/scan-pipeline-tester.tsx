@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { Button } from "~/components/ui/button";
-import type { EnvelopeSummary } from "~/lib/google/gmail-app-password";
-import type { ScanPipelineTestResult } from "~/lib/google/scan-app-password-purchases";
+import type {
+  EnvelopeSummary,
+  NoiseFilterDryRunResult,
+} from "~/lib/google/gmail-app-password";
 import { errorMessage } from "~/lib/utils";
 
 function SubjectList({
@@ -87,124 +89,88 @@ function Step({
   );
 }
 
-function PipelineResult({ result }: { result: ScanPipelineTestResult }) {
-  const { envelopeScan, noiseFilter, fairSelection, ai } = result;
-  const emailsSentToAi = ai.batches.reduce(
-    (total, batch) => total + batch.emails.length,
-    0,
+function KeptAndDropped({
+  kept,
+  dropped,
+  keptTitle,
+  droppedTitle,
+}: {
+  kept: EnvelopeSummary[];
+  dropped: EnvelopeSummary[];
+  keptTitle: string;
+  droppedTitle: string;
+}) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <LabeledList title={keptTitle} emails={kept} emptyLabel="None." />
+      <LabeledList title={droppedTitle} emails={dropped} emptyLabel="None." />
+    </div>
   );
+}
+
+function PipelineResult({ result }: { result: NoiseFilterDryRunResult }) {
+  const { keywordSearch, timeConstraint, subjectFilter, jevFilter } = result;
 
   return (
     <>
       <Step
         number={1}
-        title="Cheap envelope scan"
-        summary={`${envelopeScan.totalMatchedByKeywordQuery} matched the keyword search; the newest ${envelopeScan.considered.length} (window of ${envelopeScan.windowSize}) had their subject/sender fetched.`}
+        title="Keyword search"
+        summary={`${keywordSearch.matchedCount} emails in all mail matched the keyword query.`}
       >
         <div>
           <h4 className="mb-2 font-ui text-sm font-medium text-foreground">
             Gmail search query
           </h4>
-          <CodeBlock>{envelopeScan.keywordQuery}</CodeBlock>
+          <CodeBlock>{keywordSearch.query}</CodeBlock>
         </div>
-        <LabeledList
-          title="Envelopes considered"
-          emails={envelopeScan.considered}
-          emptyLabel="Nothing matched the keyword search."
-        />
       </Step>
 
       <Step
         number={2}
-        title="Regex noise filter"
-        summary={`${noiseFilter.kept.length} kept · ${noiseFilter.dropped.length} dropped as marketing noise (subject-line patterns).`}
+        title="Time constraint"
+        summary={`${timeConstraint.matched.length} of those are from no more than ${timeConstraint.days} days before the user connected Gmail; only their subject/sender were fetched.`}
       >
-        <div className="grid gap-4 sm:grid-cols-2">
-          <LabeledList
-            title="Kept"
-            emails={noiseFilter.kept}
-            emptyLabel="Nothing kept."
-          />
-          <LabeledList
-            title="Dropped as noise"
-            emails={noiseFilter.dropped}
-            emptyLabel="Nothing dropped."
-          />
+        <div>
+          <h4 className="mb-2 font-ui text-sm font-medium text-foreground">
+            Gmail search query
+          </h4>
+          <CodeBlock>{timeConstraint.query}</CodeBlock>
         </div>
+        <LabeledList
+          title="Matched"
+          emails={timeConstraint.matched}
+          emptyLabel="Nothing inside the time window."
+        />
       </Step>
 
       <Step
         number={3}
-        title="Fair sender selection"
-        summary={`${fairSelection.selected.length} of ${noiseFilter.kept.length} picked round-robin across sender domains (cap ${fairSelection.limit}); their full bodies were fetched.`}
+        title="Subject noise filter"
+        summary={`${subjectFilter.kept.length} kept · ${subjectFilter.dropped.length} dropped because the subject reads as marketing.`}
       >
-        <div className="grid gap-4 sm:grid-cols-2">
-          <LabeledList
-            title="Selected (in pick order)"
-            emails={fairSelection.selected}
-            emptyLabel="Nothing selected."
-          />
-          <LabeledList
-            title="Not selected (over the cap)"
-            emails={fairSelection.notSelected}
-            emptyLabel="Everything fit under the cap."
-          />
-        </div>
+        <KeptAndDropped
+          {...subjectFilter}
+          keptTitle="Kept"
+          droppedTitle="Dropped as marketing"
+        />
       </Step>
 
       <Step
         number={4}
-        title="Sent to the AI"
-        summary={`${ai.alreadyImported.length} skipped as already imported · ${emailsSentToAi} would be sent in ${ai.batches.length} ${ai.batches.length === 1 ? "batch" : "batches"} to ${ai.provider} (${ai.model}).`}
+        title="Jev subject filter"
+        summary={
+          jevFilter.enabled
+            ? `${jevFilter.kept.length} kept · ${jevFilter.dropped.length} dropped as not a purchase, judged by subject alone.`
+            : "Skipped: JEV_API_KEY is not set."
+        }
       >
-        <LabeledList
-          title="Skipped — already imported"
-          emails={ai.alreadyImported}
-          emptyLabel="None were already imported."
+        <KeptAndDropped
+          kept={jevFilter.kept}
+          dropped={jevFilter.dropped}
+          keptTitle="Kept as purchase"
+          droppedTitle="Dropped as not a purchase"
         />
-        <div>
-          <h4 className="mb-2 font-ui text-sm font-medium text-foreground">
-            Prompt: tool instructions (same for every batch)
-          </h4>
-          <CodeBlock>{ai.tool.description}</CodeBlock>
-        </div>
-        <div>
-          <h4 className="mb-2 font-ui text-sm font-medium text-foreground">
-            Prompt: tool schema and field instructions
-          </h4>
-          <p className="mb-2 font-ui text-xs text-subtle-foreground">
-            Existing categories passed in:{" "}
-            {ai.existingCategories.length > 0
-              ? ai.existingCategories.join(", ")
-              : "none"}
-          </p>
-          <CodeBlock>{JSON.stringify(ai.tool.input_schema, null, 2)}</CodeBlock>
-        </div>
-        {ai.batches.length === 0 ? (
-          <p className="font-ui text-sm text-subtle-foreground">
-            Nothing would be sent to the AI.
-          </p>
-        ) : (
-          ai.batches.map((batch, i) => (
-            <details
-              // biome-ignore lint/suspicious/noArrayIndexKey: batches are positional and never reorder
-              key={i}
-              className="rounded-lg border border-border p-3"
-            >
-              <summary className="cursor-pointer list-none font-ui text-sm font-medium text-foreground">
-                Batch {i + 1} of {ai.batches.length} ({batch.emails.length}{" "}
-                emails)
-              </summary>
-              <div className="mt-3 space-y-3">
-                <SubjectList emails={batch.emails} emptyLabel="Empty batch." />
-                <h4 className="font-ui text-sm font-medium text-foreground">
-                  User message sent
-                </h4>
-                <CodeBlock>{batch.userMessage}</CodeBlock>
-              </div>
-            </details>
-          ))
-        )}
       </Step>
     </>
   );
@@ -215,7 +181,7 @@ export function ScanPipelineTester({ userId }: { userId: string }) {
     | { status: "idle" }
     | { status: "loading" }
     | { status: "error"; message: string }
-    | { status: "done"; result: ScanPipelineTestResult }
+    | { status: "done"; result: NoiseFilterDryRunResult }
   >({ status: "idle" });
 
   async function runScan() {
@@ -231,7 +197,7 @@ export function ScanPipelineTester({ userId }: { userId: string }) {
         setState({ status: "error", message: error ?? "Scan failed" });
         return;
       }
-      const result = (await res.json()) as ScanPipelineTestResult;
+      const result = (await res.json()) as NoiseFilterDryRunResult;
       setState({ status: "done", result });
     } catch (err) {
       setState({ status: "error", message: errorMessage(err) });
@@ -246,9 +212,9 @@ export function ScanPipelineTester({ userId }: { userId: string }) {
             Test email scan
           </h2>
           <p className="font-ui text-xs text-subtle-foreground">
-            Runs every step of the real scan against this user's live inbox and
-            shows what each one produced, up to the exact AI prompt. No AI call,
-            no items created.
+            Runs the start of the real scan against this user's live inbox and
+            shows what each step kept, through the Jev subject filter. Makes one
+            Jev call per subject that passes the regex filter. No items created.
           </p>
         </div>
         <Button

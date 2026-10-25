@@ -1,14 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { PurchaseCandidateEmail } from "~/lib/ai/extractPurchases";
 import {
-  describePurchaseExtractionRequest,
-  type PurchaseCandidateEmail,
-  type PurchaseExtractionRequest,
-} from "~/lib/ai/extractPurchases";
-import {
-  debugScanPipeline,
-  type EnvelopeSummary,
   findPurchaseCandidateEmailsViaImap,
   loadAppPasswordConnection,
+  type NoiseFilterDryRunResult,
+  runNoiseFilterDryRun,
 } from "~/lib/google/gmail-app-password";
 import {
   MOCK_CANDIDATE_EMAILS,
@@ -19,7 +15,6 @@ import {
   filterAlreadyImported,
   getItemTypes,
   insertExtractedPurchases,
-  splitIntoAiBatches,
 } from "~/lib/items/import-purchases";
 import { createAdminClient } from "~/lib/supabase/admin";
 
@@ -40,11 +35,7 @@ async function findCandidates(
   const connection = await loadAppPasswordConnection(userId);
   if (!connection) return [];
 
-  return findPurchaseCandidateEmailsViaImap(
-    connection.email,
-    connection.app_password,
-    { limit: MAX_SCAN_CANDIDATES },
-  );
+  return findPurchaseCandidateEmailsViaImap(connection, MAX_SCAN_CANDIDATES);
 }
 
 // Shape persisted into email_scan_logs (candidates/sent_to_ai jsonb columns)
@@ -100,65 +91,15 @@ export async function scanAppPasswordGmailForItems(
   return { added: insertedIds.length };
 }
 
-export type ScanPipelineTestResult = Omit<
-  Awaited<ReturnType<typeof debugScanPipeline>>,
-  "candidates"
-> & {
-  ai: {
-    alreadyImported: EnvelopeSummary[];
-    existingCategories: string[];
-    // The tool definition (instructions + schema) is identical for every
-    // batch, so it's returned once; only the user message differs.
-    provider: PurchaseExtractionRequest["provider"];
-    model: string;
-    tool: PurchaseExtractionRequest["tool"];
-    batches: { emails: EnvelopeSummary[]; userMessage: string }[];
-  };
-};
-
 /**
- * Dry run of `scanAppPasswordGmailForItems` for the admin debug tool: runs
- * every step up to the AI call and returns what each one produced, plus the
- * exact AI requests that would be sent. Makes no AI call and creates no items.
+ * Dry run of the start of `scanAppPasswordGmailForItems` for the admin debug
+ * tool, stopping after the Jev subject filter. Makes one Jev call per subject
+ * that passes the regex filter and creates no items.
  */
 export async function testAppPasswordScanPipeline(
-  supabase: SupabaseClient,
   userId: string,
-): Promise<ScanPipelineTestResult | null> {
+): Promise<NoiseFilterDryRunResult | null> {
   const connection = await loadAppPasswordConnection(userId);
   if (!connection) return null;
-
-  const { candidates, ...imapSteps } = await debugScanPipeline(
-    connection.email,
-    connection.app_password,
-    { limit: MAX_SCAN_CANDIDATES },
-  );
-
-  const fresh = await filterAlreadyImported(supabase, userId, candidates);
-  const freshIds = new Set(fresh.map((email) => email.id));
-  const existingCategories = await getItemTypes(supabase, userId);
-  const { provider, model, tool } = describePurchaseExtractionRequest(
-    [],
-    existingCategories,
-  );
-
-  return {
-    ...imapSteps,
-    ai: {
-      alreadyImported: candidates
-        .filter((email) => !freshIds.has(email.id))
-        .map(({ subject, from }) => ({ subject, from })),
-      existingCategories,
-      provider,
-      model,
-      tool,
-      batches: splitIntoAiBatches(fresh).map((batch) => ({
-        emails: batch.map(({ subject, from }) => ({ subject, from })),
-        userMessage: describePurchaseExtractionRequest(
-          batch,
-          existingCategories,
-        ).userMessage,
-      })),
-    },
-  };
+  return runNoiseFilterDryRun(connection);
 }

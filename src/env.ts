@@ -11,6 +11,8 @@ export const env = createEnv({
     GOOGLE_CLIENT_SECRET: z.string().min(1),
     GOOGLE_OAUTH_REDIRECT_URI: z.string().url(),
     ANTHROPIC_API_KEY: z.string().min(1),
+    // Optional: when unset, the Jev subject filter is skipped.
+    JEV_API_KEY: z.string().min(1).optional(),
     // Dev-only local testing flags - see .env.example. Both default off, so
     // production behavior is unaffected unless explicitly opted in.
     AI_PROVIDER: z.enum(["anthropic", "ollama"]).default("anthropic"),
@@ -31,6 +33,7 @@ export const env = createEnv({
     GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
     GOOGLE_OAUTH_REDIRECT_URI: process.env.GOOGLE_OAUTH_REDIRECT_URI,
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+    JEV_API_KEY: process.env.JEV_API_KEY,
     AI_PROVIDER: process.env.AI_PROVIDER,
     OLLAMA_BASE_URL: process.env.OLLAMA_BASE_URL,
     OLLAMA_MODEL: process.env.OLLAMA_MODEL,

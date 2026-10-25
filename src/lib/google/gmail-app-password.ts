@@ -1,5 +1,7 @@
 import { ImapFlow } from "imapflow";
+import { env } from "~/env";
 import type { PurchaseCandidateEmail } from "~/lib/ai/extractPurchases";
+import { scoreSubjectAsPurchase } from "~/lib/ai/jev";
 import { extractFirstImageUrl, stripHtml } from "~/lib/email/html";
 import { parseRawEmail } from "~/lib/email/mime";
 import { createAdminClient } from "~/lib/supabase/admin";
@@ -22,21 +24,25 @@ function createImapClient(email: string, appPassword: string): ImapFlow {
   });
 }
 
-type AppPasswordConnection = { email: string; app_password: string };
+type AppPasswordConnection = {
+  email: string;
+  app_password: string;
+  created_at: string;
+};
 
-/** The user's stored Gmail App Password credentials, or null if not connected. */
+//storing gmail app password connection in supabase
 export async function loadAppPasswordConnection(
   userId: string,
 ): Promise<AppPasswordConnection | null> {
   const { data } = await createAdminClient()
     .from("gmail_app_connections")
-    .select("email, app_password")
+    .select("email, app_password, created_at")
     .eq("user_id", userId)
     .maybeSingle();
   return data;
 }
 
-/** Validates credentials by opening and immediately closing an IMAP session. */
+//checks if gmail app password is valid by opening and closing the IMAP scan super quick
 export async function checkGmailAppPassword(
   email: string,
   appPassword: string,
@@ -60,17 +66,14 @@ export async function checkGmailAppPassword(
   }
 }
 
-// Deliberately broad: anything that might be a purchase matches here, and
-// the subject-based noise filter below narrows it down before any body is
-// fetched.
+// extremely broad, searches the FULL email for these words to start to narrow things down
 const PURCHASE_EMAIL_QUERY =
   '(receipt OR invoice OR order OR purchase OR shipped OR delivered OR "payment confirmation" OR "thank you for your" OR trip OR ride OR "thanks for riding")';
 
-// How many of the newest keyword matches get their envelopes checked. Older
-// matches are never considered, so this caps how far back a scan reaches.
-const ENVELOPE_SCAN_WINDOW = 400;
+// adding a limit to how many emails are able to be even looked atinitially
+const TIME_CONSTRAINT = 30;
 
-// Matched against the subject line only (bodies aren't fetched yet).
+// Matched against the subject line only, before any body is downloaded.
 const MARKETING_SUBJECT_PATTERNS: RegExp[] = [
   /\b\d{1,3}%\s*off\b/i,
   /\b(flash |mega |huge |summer |winter |holiday )?sale\b/i,
@@ -93,29 +96,57 @@ function looksLikeMarketingNoise(subject: string): boolean {
   return MARKETING_SUBJECT_PATTERNS.some((pattern) => pattern.test(subject));
 }
 
+// Matched against the body (only for emails that passed the subject filter).
+// Deliberately broad: every real purchase states a price somewhere, so only
+// emails with no money amount at all are dropped.
+const PRICE_PATTERN =
+  /[$€£¥₹]\s?\d|\d\s?[€£¥₹]|\d\s?(USD|EUR|GBP|CAD|AUD|JPY|INR)\b/i;
+
 function senderDomain(address: string): string {
   return address.toLowerCase().split("@")[1] ?? address.toLowerCase();
 }
 
+function partition<T>(items: T[], keep: (item: T) => boolean): [T[], T[]] {
+  const kept: T[] = [];
+  const dropped: T[] = [];
+  for (const item of items) (keep(item) ? kept : dropped).push(item);
+  return [kept, dropped];
+}
+
+export type EnvelopeSummary = { subject: string; from: string };
+
+type Envelope = EnvelopeSummary & { uid: number };
+
+type FullEmail = PurchaseCandidateEmail & { uid: number };
+
+function toEnvelopeSummary({
+  subject,
+  from,
+}: EnvelopeSummary): EnvelopeSummary {
+  return { subject, from };
+}
+
 /**
- * Picks up to `limit` uids round-robin across sender domains (newest first
+ * Picks up to `limit` emails round-robin across sender domains (newest first
  * within each), so one prolific sender can't crowd out everyone else.
  */
 function pickFairlyAcrossSenders(
-  survivors: { uid: number; domain: string }[],
+  emails: FullEmail[],
   limit: number,
-): number[] {
-  const byDomain = new Map<string, number[]>();
-  // survivors is ascending by uid (oldest -> newest); reverse per-domain so
-  // each domain's list is newest-first.
-  for (const { uid, domain } of survivors) {
+): FullEmail[] {
+  const byDomain = new Map<string, FullEmail[]>();
+  // Walk oldest -> newest by uid (regardless of the order the server streamed
+  // back) and prepend, so each domain's list ends up newest-first.
+  const ascending = [...emails].sort((a, b) => a.uid - b.uid);
+  for (const email of ascending) {
+    const domain = senderDomain(email.from);
     const list = byDomain.get(domain);
-    if (list) list.unshift(uid);
-    else byDomain.set(domain, [uid]);
+    if (list) list.unshift(email);
+    else byDomain.set(domain, [email]);
   }
 
   const queues = [...byDomain.values()];
-  const picked: number[] = [];
+  const picked: FullEmail[] = [];
   for (let round = 0; picked.length < limit; round++) {
     const roundPicks = queues
       .filter((queue) => round < queue.length)
@@ -126,88 +157,17 @@ function pickFairlyAcrossSenders(
   return picked;
 }
 
-function buildGmailRawQuery(since?: Date): string {
-  return since
-    ? `${PURCHASE_EMAIL_QUERY} after:${Math.floor(since.getTime() / 1000)}`
-    : `${PURCHASE_EMAIL_QUERY} newer_than:365d`;
+function buildGmailRawQuery(connectedAt: string): string {
+  const earliest = new Date(connectedAt);
+  earliest.setDate(earliest.getDate() - TIME_CONSTRAINT);
+  return `${PURCHASE_EMAIL_QUERY} after:${Math.floor(earliest.getTime() / 1000)}`;
 }
 
-export type EnvelopeSummary = { subject: string; from: string };
-
-type EnvelopeSurvivor = EnvelopeSummary & { uid: number; domain: string };
-
-type EnvelopeScanResult = {
-  totalMatchedByKeywordQuery: number;
-  considered: EnvelopeSummary[];
-  survivors: EnvelopeSurvivor[];
-  droppedAsNoise: EnvelopeSummary[];
-};
-
-// Phase 1 of the scan: pull just the envelopes (subject/from - cheap) for a
-// wide window of the most-recent keyword matches, and drop the ones whose
-// subject reads as marketing/lifecycle noise. Shared by the real scan
-// (`findPurchaseCandidateEmailsViaImap`) and the admin debug tool
-// (`debugScanPipeline`).
-async function scanEnvelopes(
-  client: ImapFlow,
-  allMail: string,
-  query: string,
-): Promise<EnvelopeScanResult> {
-  const lock = await client.getMailboxLock(allMail);
-  try {
-    const uids = await client.search({ gmailraw: query }, { uid: true });
-    if (!uids || uids.length === 0) {
-      return {
-        totalMatchedByKeywordQuery: 0,
-        considered: [],
-        survivors: [],
-        droppedAsNoise: [],
-      };
-    }
-
-    // UIDs are ascending, so the tail is the newest.
-    const windowUids = uids.slice(-ENVELOPE_SCAN_WINDOW);
-    const considered: EnvelopeSummary[] = [];
-    const survivors: EnvelopeSurvivor[] = [];
-    const droppedAsNoise: EnvelopeSummary[] = [];
-    for await (const message of client.fetch(
-      windowUids,
-      { envelope: true },
-      { uid: true },
-    )) {
-      if (message.uid == null) continue;
-      const subject = message.envelope?.subject ?? "";
-      const fromAddress = message.envelope?.from?.[0]?.address ?? "";
-      considered.push({ subject, from: fromAddress });
-      // TODO: subject-keyword matching is too narrow; replace with a smarter
-      // noise classifier.
-      if (looksLikeMarketingNoise(subject)) {
-        droppedAsNoise.push({ subject, from: fromAddress });
-        continue;
-      }
-      survivors.push({
-        uid: message.uid,
-        domain: senderDomain(fromAddress),
-        subject,
-        from: fromAddress,
-      });
-    }
-    return {
-      totalMatchedByKeywordQuery: uids.length,
-      considered,
-      survivors,
-      droppedAsNoise,
-    };
-  } finally {
-    lock.release();
-  }
-}
-
-async function openAllMailClient(
-  email: string,
-  appPassword: string,
-): Promise<{ client: ImapFlow; allMail: string }> {
-  const client = createImapClient(email, appPassword);
+async function openAllMailClient({
+  email,
+  app_password,
+}: AppPasswordConnection): Promise<{ client: ImapFlow; allMail: string }> {
+  const client = createImapClient(email, app_password);
   await client.connect();
   const mailboxes = await client.list();
   const allMail =
@@ -215,151 +175,192 @@ async function openAllMailClient(
   return { client, allMail };
 }
 
-// Phase 2a: choose which survivors get their full bodies fetched - `limit`
-// of them, fairly across sender domains (see pickFairlyAcrossSenders) rather
-// than just the newest `limit` overall. Sorts ascending first so "newest" is
-// well-defined regardless of the order the server streamed back.
-function selectSurvivorsForBodyFetch(
-  survivors: EnvelopeSurvivor[],
-  limit: number,
-): EnvelopeSurvivor[] {
-  const sorted = [...survivors].sort((a, b) => a.uid - b.uid);
-  const pickedUids = pickFairlyAcrossSenders(sorted, limit);
-  const byUid = new Map(sorted.map((survivor) => [survivor.uid, survivor]));
-  return pickedUids.map((uid) => byUid.get(uid) as EnvelopeSurvivor);
-}
-
-// Phase 2b: fetch and parse full bodies for the selected uids.
-async function fetchCandidateEmails(
+// Keyword search, then just the envelopes (subject/from - cheap) of every
+// match.
+async function fetchEnvelopes(
   client: ImapFlow,
-  uids: number[],
-): Promise<PurchaseCandidateEmail[]> {
-  const results: PurchaseCandidateEmail[] = [];
+  query: string,
+): Promise<Envelope[]> {
+  const uids = await client.search({ gmailraw: query }, { uid: true });
+  if (!uids || uids.length === 0) return [];
+
+  const envelopes: Envelope[] = [];
   for await (const message of client.fetch(
     uids,
+    { envelope: true },
+    { uid: true },
+  )) {
+    if (message.uid == null) continue;
+    envelopes.push({
+      uid: message.uid,
+      subject: message.envelope?.subject ?? "",
+      from: message.envelope?.from?.[0]?.address ?? "",
+    });
+  }
+  return envelopes;
+}
+
+async function fetchFullEmails(
+  client: ImapFlow,
+  envelopes: Envelope[],
+): Promise<FullEmail[]> {
+  if (envelopes.length === 0) return [];
+
+  const emails: FullEmail[] = [];
+  for await (const message of client.fetch(
+    envelopes.map((envelope) => envelope.uid),
     { source: true, envelope: true },
     { uid: true },
   )) {
     const raw = message.source?.toString("utf-8") ?? "";
     const { html, text } = parseRawEmail(raw);
-    const bodyText = html ? stripHtml(html) : (text ?? "");
-
-    results.push({
+    emails.push({
+      uid: message.uid,
       id: message.envelope?.messageId ?? String(message.uid),
       from: message.envelope?.from?.[0]?.address ?? "",
       subject: message.envelope?.subject ?? "",
-      bodyText,
+      bodyText: html ? stripHtml(html) : (text ?? ""),
       imageUrl: html ? extractFirstImageUrl(html) : null,
     });
   }
-  return results;
+  return emails;
 }
 
-/**
- * Finds emails that look like purchase confirmations by connecting over IMAP
- * with a Gmail App Password and running a Gmail-flavored search (X-GM-RAW)
- * against the All Mail folder. This is the App Password equivalent of
- * `findPurchaseCandidateEmails` in `~/lib/google/gmail.ts`, which uses the
- * Gmail API/OAuth instead. Callers still need to run the results through AI
- * extraction - this only narrows down candidates so the AI never sees the
- * whole inbox.
- */
-export async function findPurchaseCandidateEmailsViaImap(
-  email: string,
-  appPassword: string,
-  { since, limit = 20 }: { since?: Date; limit?: number } = {},
-): Promise<PurchaseCandidateEmail[]> {
-  const { client, allMail } = await openAllMailClient(email, appPassword);
+// Opens All Mail, runs `fn` with it locked, then always logs out.
+async function withAllMailLocked<T>(
+  connection: AppPasswordConnection,
+  fn: (client: ImapFlow) => Promise<T>,
+): Promise<T> {
+  const { client, allMail } = await openAllMailClient(connection);
+  const lock = await client.getMailboxLock(allMail);
   try {
-    const { survivors } = await scanEnvelopes(
-      client,
-      allMail,
-      buildGmailRawQuery(since),
-    );
-    if (survivors.length === 0) return [];
-
-    const selected = selectSurvivorsForBodyFetch(survivors, limit);
-    return await fetchCandidateEmails(
-      client,
-      selected.map((survivor) => survivor.uid),
-    );
+    return await fn(client);
   } finally {
+    lock.release();
     await client.logout().catch(() => client.close());
   }
 }
 
-export type ScanPipelineDebugResult = {
-  envelopeScan: {
-    keywordQuery: string;
-    totalMatchedByKeywordQuery: number;
-    windowSize: number;
-    considered: EnvelopeSummary[];
-  };
-  noiseFilter: {
+// TODO: subject-keyword matching is too narrow; replace with a smarter
+// noise classifier.
+function filterSubjectNoise<T extends EnvelopeSummary>(
+  emails: T[],
+): [T[], T[]] {
+  return partition(emails, (email) => !looksLikeMarketingNoise(email.subject));
+}
+
+const JEV_PURCHASE_THRESHOLD = 0.5;
+const JEV_CONCURRENCY = 10;
+
+/**
+ * Subject-only AI pass after the regex filter. Keeps emails Jev thinks are
+ * purchase confirmations. If Jev is not configured or a request fails, the
+ * email is kept, so a Jev outage never drops a real purchase.
+ */
+async function filterSubjectsWithJev<T extends EnvelopeSummary>(
+  emails: T[],
+): Promise<[T[], T[]]> {
+  if (!env.JEV_API_KEY) return [emails, []];
+
+  const kept: T[] = [];
+  const dropped: T[] = [];
+  for (let i = 0; i < emails.length; i += JEV_CONCURRENCY) {
+    const batch = emails.slice(i, i + JEV_CONCURRENCY);
+    const scores = await Promise.all(
+      batch.map((email) =>
+        scoreSubjectAsPurchase(email.subject).catch(() => null),
+      ),
+    );
+    batch.forEach((email, j) => {
+      const score = scores[j];
+      if (
+        score === null ||
+        score === undefined ||
+        score >= JEV_PURCHASE_THRESHOLD
+      ) {
+        kept.push(email);
+      } else {
+        dropped.push(email);
+      }
+    });
+  }
+  return [kept, dropped];
+}
+
+export type NoiseFilterDryRunResult = {
+  keywordSearch: { query: string; matchedCount: number };
+  timeConstraint: { query: string; days: number; matched: EnvelopeSummary[] };
+  subjectFilter: { kept: EnvelopeSummary[]; dropped: EnvelopeSummary[] };
+  jevFilter: {
+    enabled: boolean;
     kept: EnvelopeSummary[];
     dropped: EnvelopeSummary[];
   };
-  fairSelection: {
-    limit: number;
-    selected: EnvelopeSummary[];
-    notSelected: EnvelopeSummary[];
-  };
-  candidates: PurchaseCandidateEmail[];
 };
 
-function toSummary({ subject, from }: EnvelopeSummary): EnvelopeSummary {
-  return { subject, from };
+/**
+ * Admin debug view of the start of the scan: how many emails match the
+ * keyword query across all mail, how many of those fall inside the time
+ * constraint, what the regex subject filter keeps, and what the Jev subject
+ * filter keeps from that. Stops there - no bodies downloaded, no item
+ * creation. Makes one Jev call per subject that passes the regex filter.
+ */
+export async function runNoiseFilterDryRun(
+  connection: AppPasswordConnection,
+): Promise<NoiseFilterDryRunResult> {
+  const query = buildGmailRawQuery(connection.created_at);
+  return withAllMailLocked(connection, async (client) => {
+    const keywordUids = await client.search(
+      { gmailraw: PURCHASE_EMAIL_QUERY },
+      { uid: true },
+    );
+    const matched = await fetchEnvelopes(client, query);
+    const [kept, dropped] = filterSubjectNoise(matched);
+    const [jevKept, jevDropped] = await filterSubjectsWithJev(kept);
+
+    return {
+      keywordSearch: {
+        query: PURCHASE_EMAIL_QUERY,
+        matchedCount: keywordUids ? keywordUids.length : 0,
+      },
+      timeConstraint: {
+        query,
+        days: TIME_CONSTRAINT,
+        matched: matched.map(toEnvelopeSummary),
+      },
+      subjectFilter: {
+        kept: kept.map(toEnvelopeSummary),
+        dropped: dropped.map(toEnvelopeSummary),
+      },
+      jevFilter: {
+        enabled: !!env.JEV_API_KEY,
+        kept: jevKept.map(toEnvelopeSummary),
+        dropped: jevDropped.map(toEnvelopeSummary),
+      },
+    };
+  });
 }
 
 /**
- * Runs the same IMAP phases as `findPurchaseCandidateEmailsViaImap`, but
- * records what each phase produced (envelope scan -> noise filter -> fair
- * sender selection -> body fetch) so the admin debug tool can show every
- * step. Never touches the AI.
+ * Narrows a user's inbox down to likely purchase confirmations over IMAP
+ * (Gmail App Password): keyword search within the time constraint -> subject
+ * noise filter -> body price filter -> fair sender selection. Full bodies are
+ * only downloaded for emails that passed the subject filter. The result still
+ * needs AI extraction.
  */
-export async function debugScanPipeline(
-  email: string,
-  appPassword: string,
-  { since, limit }: { since?: Date; limit: number },
-): Promise<ScanPipelineDebugResult> {
-  const keywordQuery = buildGmailRawQuery(since);
-  const { client, allMail } = await openAllMailClient(email, appPassword);
-  try {
-    const {
-      totalMatchedByKeywordQuery,
-      considered,
-      survivors,
-      droppedAsNoise,
-    } = await scanEnvelopes(client, allMail, keywordQuery);
-
-    const selected = selectSurvivorsForBodyFetch(survivors, limit);
-    const selectedUids = new Set(selected.map((survivor) => survivor.uid));
-    const candidates =
-      selected.length > 0
-        ? await fetchCandidateEmails(client, [...selectedUids])
-        : [];
-
-    return {
-      envelopeScan: {
-        keywordQuery,
-        totalMatchedByKeywordQuery,
-        windowSize: ENVELOPE_SCAN_WINDOW,
-        considered,
-      },
-      noiseFilter: {
-        kept: survivors.map(toSummary),
-        dropped: droppedAsNoise,
-      },
-      fairSelection: {
-        limit,
-        selected: selected.map(toSummary),
-        notSelected: survivors
-          .filter((survivor) => !selectedUids.has(survivor.uid))
-          .map(toSummary),
-      },
-      candidates,
-    };
-  } finally {
-    await client.logout().catch(() => client.close());
-  }
+export async function findPurchaseCandidateEmailsViaImap(
+  connection: AppPasswordConnection,
+  limit: number,
+): Promise<PurchaseCandidateEmail[]> {
+  const query = buildGmailRawQuery(connection.created_at);
+  return withAllMailLocked(connection, async (client) => {
+    const [subjectKept] = filterSubjectNoise(
+      await fetchEnvelopes(client, query),
+    );
+    const [jevKept] = await filterSubjectsWithJev(subjectKept);
+    const bodyKept = (await fetchFullEmails(client, jevKept)).filter((email) =>
+      PRICE_PATTERN.test(email.bodyText),
+    );
+    return pickFairlyAcrossSenders(bodyKept, limit);
+  });
 }

@@ -84,8 +84,6 @@ function findBestBodyPart(raw: string): EmailBody {
   return { html: null, text: null };
 }
 
-export const LOOKS_LIKE_RAW_EMAIL = /^mime-version:\s*1\.0/im;
-
 /** Parses a raw RFC 822 message (e.g. Gmail's "Show original"), decoding
  * quoted-printable/base64 and walking multipart boundaries to find the
  * html and/or plain-text body. */

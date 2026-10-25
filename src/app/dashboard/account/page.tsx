@@ -6,7 +6,6 @@ import { SignOutButton } from "~/components/sign-out-button";
 import { LoadingText, SubPageShell } from "~/components/sub-page-shell";
 import { formatDate } from "~/lib/format";
 import { createClient } from "~/lib/supabase/client";
-import { EXTRACTION_LIMIT, getExtractionsUsed } from "~/lib/usage";
 
 const CARD_LABEL_CLASS =
   "mb-2 font-ui text-xs uppercase tracking-widest text-subtle-foreground";
@@ -15,7 +14,6 @@ export default function AccountPage() {
   const [email, setEmail] = useState<string | null>(null);
   const [createdAt, setCreatedAt] = useState<string | undefined>(undefined);
   const [itemTypes, setItemTypes] = useState<string[]>([]);
-  const [extractionsUsed, setExtractionsUsed] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -24,16 +22,12 @@ export default function AccountPage() {
       if (user) {
         setEmail(user.email ?? null);
         setCreatedAt(user.created_at);
-        const [{ data: profile }, used] = await Promise.all([
-          supabase
-            .from("profiles")
-            .select("item_types")
-            .eq("user_id", user.id)
-            .single(),
-          getExtractionsUsed(supabase, user.id),
-        ]);
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("item_types")
+          .eq("user_id", user.id)
+          .single();
         setItemTypes(profile?.item_types ?? []);
-        setExtractionsUsed(used);
       }
       setLoading(false);
     });
@@ -58,16 +52,6 @@ export default function AccountPage() {
               </p>
             </div>
           </div>
-
-          {extractionsUsed !== null && (
-            <div className={SECTION_CARD_CLASS}>
-              <p className={CARD_LABEL_CLASS}>AI extractions</p>
-              <p className="font-ui text-sm text-foreground">
-                {Math.min(extractionsUsed, EXTRACTION_LIMIT)}/{EXTRACTION_LIMIT}{" "}
-                used
-              </p>
-            </div>
-          )}
 
           {itemTypes.length > 0 && (
             <div className={SECTION_CARD_CLASS}>
