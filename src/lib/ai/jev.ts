@@ -5,8 +5,11 @@ const JEV_MODEL = "jev-latest";
 // A hung request would otherwise stall the whole scan; callers treat the
 // resulting error like any other Jev failure.
 const JEV_TIMEOUT_MS = 10_000;
+// Broad on purpose: real ride and trip receipts rarely say "order" or
+// "purchase" ("Your Wednesday evening trip with Uber"). Later steps drop
+// anything outside the user's categories.
 const PURCHASE_QUESTION =
-  "Is this email subject line from a purchase or order confirmation?";
+  "Is this email subject line from a receipt or confirmation for something the person bought or paid for, such as an order, a ride or trip, a booking or ticket, or a food delivery?";
 
 type SystemOneResponse = {
   answers: {
@@ -52,8 +55,9 @@ async function askJev(state: string, question: string): Promise<number> {
 }
 
 /**
- * Asks Jev whether a single email subject looks like a purchase or order
- * confirmation. Returns the probability (0-1) that it does.
+ * Asks Jev whether a single email subject looks like a receipt or
+ * confirmation for something bought or paid for (an order, ride, booking,
+ * ...). Returns the probability (0-1) that it does.
  */
 export function scoreSubjectAsPurchase(subject: string): Promise<number> {
   return askJev(subject, PURCHASE_QUESTION);

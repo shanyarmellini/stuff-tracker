@@ -77,7 +77,7 @@ const PURCHASE_EMAIL_QUERY =
   '(receipt OR invoice OR order OR purchase OR shipped OR delivered OR "payment confirmation" OR "thank you for your" OR trip OR ride OR "thanks for riding")';
 
 // adding a limit to how many emails are able to be even looked atinitially
-const TIME_CONSTRAINT = 30;
+const TIME_CONSTRAINT = 90;
 
 // Matched against the subject line only, before any body is downloaded.
 const MARKETING_SUBJECT_PATTERNS: RegExp[] = [
