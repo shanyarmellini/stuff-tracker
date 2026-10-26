@@ -26,13 +26,6 @@ function cardClass(active: boolean, disabled: boolean) {
   );
 }
 
-function cardHintClass(active: boolean) {
-  return cn(
-    "block font-ui text-xs",
-    active ? "text-brand-foreground/80" : "text-subtle-foreground",
-  );
-}
-
 export function CategoriesStep({
   onDone,
   save = saveScanCategories,
@@ -149,9 +142,8 @@ export function CategoriesStep({
     <div className={ONBOARDING_CARD_CLASS}>
       <h1 className={ONBOARDING_TITLE_CLASS}>What do you want to track?</h1>
       <p className="mb-6 font-ui text-sm text-subtle-foreground">
-        Pick up to {MAX_SCAN_CATEGORIES} categories. We only scan your inbox for
-        purchases in these, so anything else (like ride receipts, if you
-        don&apos;t pick Transportation) won&apos;t be imported.
+        Choose a maximum of {MAX_SCAN_CATEGORIES} items! When we scan your
+        inbox, we will be looking for only these categories of items
       </p>
 
       <div className="mb-2 grid gap-2 sm:grid-cols-2">
@@ -170,9 +162,6 @@ export function CategoriesStep({
               <span className="block font-ui text-sm font-medium">
                 {category.label}
               </span>
-              <span className={cardHintClass(active)}>
-                {category.subcategories.join(", ")}
-              </span>
             </button>
           );
         })}
@@ -184,9 +173,6 @@ export function CategoriesStep({
           className={cardClass(otherActive, !otherActive && maxed)}
         >
           <span className="block font-ui text-sm font-medium">Other</span>
-          <span className={cardHintClass(otherActive)}>
-            Something else? Type in as many as you like.
-          </span>
         </button>
       </div>
 
